@@ -31,7 +31,8 @@ conda install mamba -c conda-forge -y -q
 ############ REQUIRED DEPENDENCIES (PYBULLET) ############
 echo Installing dependencies...
 
-mamba install -c conda-forge pytorch==1.13.0 torchvision==0.14.0
+mamba install -c conda-forge mkl==2024.0.0
+mamba install -c pytorch -c nvidia pytorch==1.13.1 torchvision==0.14.1 pytorch-cuda=11.7
 
 mamba install -c conda-forge pybullet pyyaml scipy opencv pinocchio matplotlib gin-config gym==0.21.0 -y -q
 
@@ -40,7 +41,7 @@ mamba install -c conda-forge scikit-learn addict pandas plyfile tqdm -y -q
 mamba install -c open3d-admin open3d -y -q
 
 pip install einops
-pip install hydra-core==1.1.1
+pip install hydra-core==1.2.0
 pip install wandb
 
 # Robomimic
