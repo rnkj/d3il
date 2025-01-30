@@ -1,0 +1,3 @@
+[submodule "third_party/eipl"]
+	path = third_party/eipl
+	url = https://github.com/ogata-lab/eipl
