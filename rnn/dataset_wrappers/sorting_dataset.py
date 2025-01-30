@@ -2,17 +2,12 @@ from typing import Tuple
 
 import torch
 from torch import Tensor
-# from torch.utils.data import Dataset
 
 from environments.dataset.base_dataset import TrajectoryDataset
 from environments.dataset.sorting_dataset import Sorting_Img_Dataset
 
 
-_items_t = Tuple[
-    Tuple[Tensor, Tensor, Tensor],
-    Tuple[Tensor, Tensor, Tensor],
-    Tensor,
-]
+_items_t = Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]
 
 
 class Sorting_Img_Dataset_Wrapper(TrajectoryDataset):
