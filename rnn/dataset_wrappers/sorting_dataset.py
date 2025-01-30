@@ -2,8 +2,9 @@ from typing import Tuple
 
 import torch
 from torch import Tensor
-from torch.utils.data import Dataset
+# from torch.utils.data import Dataset
 
+from environments.dataset.base_dataset import TrajectoryDataset
 from environments.dataset.sorting_dataset import Sorting_Img_Dataset
 
 
@@ -14,10 +15,8 @@ _items_t = Tuple[
 ]
 
 
-class Sorting_Img_Dataset_Wrapper(Dataset):
+class Sorting_Img_Dataset_Wrapper(TrajectoryDataset):
     def __init__(self, dataset: Sorting_Img_Dataset, skip: int = 1):
-        super().__init__()
-
         bp_img_size = dataset.bp_cam_imgs[0].size()[1:]
         inhand_img_size = dataset.inhand_cam_imgs[0].size()[1:]
         for i in range(dataset.num_data):
@@ -50,8 +49,14 @@ class Sorting_Img_Dataset_Wrapper(Dataset):
             f"Maximum episode length ({dataset.max_len_data}) must be devided skip ({skip})"
         )
 
-    def __getattr__(self, name):
-        return getattr(self.dataset, name)
+    def get_seq_length(self, idx):
+        return self.dataset.get_seq_length(idx)
+    
+    def get_all_actions(self):
+        return self.dataset.get_all_actions()
+    
+    def get_all_observations(self):
+        return self.dataset.get_all_actions()
 
     def __len__(self) -> int:
         return self.dataset.num_data
