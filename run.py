@@ -55,11 +55,11 @@ def main(cfg: DictConfig) -> None:
     agent.train_agent()
 
     # load the model performs best on the evaluation set
-    # agent.load_pretrained_model(agent.working_dir, sv_name=agent.eval_model_name)
+    #agent.load_pretrained_model(agent.working_dir, sv_name=agent.eval_model_name)
 
     # simulate the model
-    # env_sim = hydra.utils.instantiate(cfg.simulation)
-    # env_sim.test_agent(agent)
+    #env_sim = hydra.utils.instantiate(cfg.simulation)
+    #env_sim.test_agent(agent)
 
     log.info("done")
 
