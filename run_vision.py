@@ -53,8 +53,8 @@ def main(cfg: DictConfig) -> None:
 
     agent = hydra.utils.instantiate(cfg.agents)
 
-    best_success = -1
-    train_sim = hydra.utils.instantiate(cfg.train_simulation)
+    # best_success = -1
+    # train_sim = hydra.utils.instantiate(cfg.train_simulation)
     for num_epoch in tqdm(range(agent.epoch)):
 
         # train the agent
@@ -62,23 +62,24 @@ def main(cfg: DictConfig) -> None:
 
         if not (num_epoch + 1) % agent.eval_every_n_epochs:
 
-            successrate, _ = train_sim.test_agent(agent)
+            # successrate, _ = train_sim.test_agent(agent)
 
-            if successrate > best_success:
-                best_success = successrate
+            # if successrate > best_success:
+            #     best_success = successrate
 
-                agent.store_model_weights(agent.working_dir, sv_name=agent.eval_model_name)
-                log.info('New best success rate. Stored weights have been updated!')
+            #     agent.store_model_weights(agent.working_dir, sv_name=agent.eval_model_name)
+            #     log.info('New best success rate. Stored weights have been updated!')
+            agent.store_model_weights(agent.working_dir, sv_name=agent.eval_model_name)
 
     agent.store_model_weights(agent.working_dir, sv_name=agent.last_model_name)
     log.info("Training done!")
 
     # load the model performs best on the evaluation set
-    agent.load_pretrained_model(agent.working_dir, sv_name=agent.eval_model_name)
+    # agent.load_pretrained_model(agent.working_dir, sv_name=agent.eval_model_name)
 
     # simulate the model
-    env_sim = hydra.utils.instantiate(cfg.simulation)
-    env_sim.test_agent(agent)
+    # env_sim = hydra.utils.instantiate(cfg.simulation)
+    # env_sim.test_agent(agent)
 
     log.info("done")
 
