@@ -105,7 +105,7 @@ MUJOCO_GL=egl python run_sim.py --logdir logs/sorting/sweeps/act_vision/YY=mm-dd
 ## Training RNN-based model
 （検証中）上手くいっていない。。。
 
-`rnn/`以下を参照．
+[rnn/](https://github.com/rnkj/d3il/tree/dev_rnn/rnn)以下を参照．
 
 agentとmodelは[READMEのTrain your models](https://github.com/rnkj/d3il?tab=readme-ov-file#train-your-models)準拠．
 
