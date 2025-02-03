@@ -1,47 +1,82 @@
+import os
 import logging
 from pathlib import Path
+from dataclasses import dataclass
+from typing import Literal, Optional
 
 import hydra
 import numpy as np
 import torch
+import tyro
 import wandb
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
+
 
 log = logging.getLogger(__name__)
-
 
 OmegaConf.register_new_resolver("add", lambda *numbers: sum(numbers))
 torch.cuda.empty_cache()
 
 
-def get_working_dirs():
-    from hydra.core.hydra_config import HydraConfig
-
-    cfg = HydraConfig.get()
-    config_path = Path(
-        [
-            path["path"]
-            for path in cfg.runtime.config_sources
-            if path["schema"] == "file"
-        ][0]
-    )
-
-    working_dirs = sorted(
-        [str(p) for p in config_path.glob("*") if p.is_dir()]
-    )
-
-    return working_dirs
+@dataclass
+class SimulationArgs:
+    # random seed
+    seed: Optional[int] = None
+    # CPU/CUDA device
+    device: str = "cuda"
+    # render or not
+    render: bool = False
+    # number of CPU cores
+    n_cores: Optional[int] = None
+    # number of contexts of trained tasks
+    n_contexts: Optional[int] = None
+    # number of trajectory tested per contexts
+    n_trajectories_per_context: Optional[int] = None
 
 
-@hydra.main(config_path="configs", config_name="avoiding_config.yaml")
-def main(cfg: DictConfig) -> None:
-    np.random.seed(cfg.seed)
-    torch.manual_seed(cfg.seed)
+@dataclass
+class Args:
+    # simulation option
+    simulation: SimulationArgs
+
+    # log directory where checkpoints and config files are saved
+    logdir: str
+
+    # index of trial
+    multirun_index: int = 0
+
+    # model type: "eval" or "last"
+    model_type: Literal["eval", "last"] = "eval"
+
+
+def main(args: Args) -> None:
+    # search multirun directories
+    multirun_dirs = sorted(set([p.parent for p in Path(args.logdir).glob("**/*.pth")]))
+    target_dir = multirun_dirs[args.multirun_index]
+
+    # get config file of training
+    config_file = os.path.join(target_dir, ".hydra/config.yaml")
+    cfg = OmegaConf.load(config_file)
+
+    # set custom parameters of simulation
+    if args.simulation.seed is not None:
+        cfg.simulation.seed = args.simulation.seed
+    cfg.simulation.device = args.simulation.device
+    cfg.simulation.render = args.simulation.render
+    if args.simulation.n_cores is not None:
+        cfg.simulation.n_cores = args.simulation.n_cores
+    if args.simulation.n_contexts is not None:
+        cfg.simulation.n_contexts = args.simulation.n_contexts
+    if args.simulation.n_trajectories_per_context is not None:
+        cfg.simulation.n_trajectories_per_context = (
+            args.simulation.n_trajectories_per_context
+        )
+
+    np.random.seed(cfg.simulation.seed)
+    torch.manual_seed(cfg.simulation.seed)
 
     # init wandb logger and config from hydra path
-    wandb.config = OmegaConf.to_container(
-        cfg, resolve=True, throw_on_missing=True
-    )
+    wandb.config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
 
     run = wandb.init(
         project=cfg.wandb.project,
@@ -52,12 +87,17 @@ def main(cfg: DictConfig) -> None:
 
     agent = hydra.utils.instantiate(cfg.agents)
 
-    # TODO: insert agent.load_pretrained_model() here with relative path
-    working_dirs = get_working_dirs()
-    agent.load_pretrained_model(working_dirs[0], sv_name=agent.eval_model_name)
+    if args.model_type == "eval":
+        sv_name = agent.eval_model_name
+    elif args.model_type == "last":
+        sv_name = agent.last_model_name
+    else:
+        raise ValueError
 
-    # env_sim = hydra.utils.instantiate(cfg.simulation)
-    # env_sim.test_agent(agent)
+    agent.load_pretrained_model(target_dir, sv_name=sv_name)
+
+    env_sim = hydra.utils.instantiate(cfg.simulation)
+    env_sim.test_agent(agent)
 
     log.info("done")
 
@@ -65,4 +105,4 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(tyro.cli(Args))
