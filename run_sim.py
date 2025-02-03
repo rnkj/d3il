@@ -56,8 +56,8 @@ def main(cfg: DictConfig) -> None:
     working_dirs = get_working_dirs()
     agent.load_pretrained_model(working_dirs[0], sv_name=agent.eval_model_name)
 
-    env_sim = hydra.utils.instantiate(cfg.simulation)
-    env_sim.test_agent(agent)
+    # env_sim = hydra.utils.instantiate(cfg.simulation)
+    # env_sim.test_agent(agent)
 
     log.info("done")
 
