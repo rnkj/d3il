@@ -91,9 +91,7 @@ class SARNN(nn.Module):
         self.rec = nn.LSTMCell(rec_in, rec_dim)  # LSTM cell
 
         # Joint Decoder
-        self.decoder_joint = nn.Sequential(
-            nn.Linear(rec_dim, action_dim), activation
-        )  # Linear layer and activation
+        self.decoder_action = nn.Linear(rec_dim, action_dim)
 
         # Point Decoder
         self.decoder_point = nn.Sequential(
@@ -181,7 +179,7 @@ class SARNN(nn.Module):
         new_rnn_state = self.rec(hid, rnn_state)
 
         # Decode joint prediction
-        y_act = self.decoder_joint(new_rnn_state[0])
+        y_act = self.decoder_action(new_rnn_state[0])
 
         # Decode points
         dec_pts = self.decoder_point(new_rnn_state[0])
