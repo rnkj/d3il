@@ -38,7 +38,7 @@ mamba install -c conda-forge pybullet pyyaml scipy opencv pinocchio matplotlib g
 
 # Open3D for PointClouds and its dependencies. Why does it not install them directly?
 mamba install -c conda-forge scikit-learn addict pandas plyfile tqdm -y -q
-mamba install -c open3d-admin open3d -y -q
+mamba install -c conda-forge -c open3d-admin open3d -y -q
 
 pip install einops
 pip install hydra-core==1.2.0
