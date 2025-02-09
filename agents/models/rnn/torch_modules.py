@@ -283,13 +283,13 @@ class InitialStateWrapper(nn.Module):
         self.rnn_cell = rnn_cell
         self.trainable = trainable
 
-        self.rnn_type = type(rnn_cell).__name__
+        # self.rnn_type = type(rnn_cell).__name__
         param = next(rnn_cell.parameters())
         device = param.device
         dtype = param.dtype
         hidden_size = rnn_cell.hidden_size
 
-        if self.rnn_type == "LSTMCell":
+        if isinstance(self.rnn_cell, nn.LSTMCell):
             self.initial_state = nn.ParameterList(
                 [
                     nn.Parameter(
@@ -306,7 +306,7 @@ class InitialStateWrapper(nn.Module):
             )
 
     def get_initial_state(self, batch_size: int) -> rnn_state_t:
-        if self.rnn_type == "LSTMCell":
+        if isinstance(self.rnn_cell, nn.LSTMCell):
             return tuple(
                 [
                     torch.tile(self.initial_state[i][None], (batch_size, 1))
@@ -314,7 +314,10 @@ class InitialStateWrapper(nn.Module):
                 ]
             )
         else:
-            return torch.tile(self.initial_state[None], (batch_size, 1))
+            state = torch.tile(self.initial_state[None], (batch_size, 1))
+            if isinstance(self.rnn_cell, MinRNNBase):
+                state = g(state)
+            return state
 
     def forward(self, input: Tensor, state: opt_rnn_state_t = None) -> Tensor:
         if state is None:
