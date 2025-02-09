@@ -306,7 +306,15 @@ class InitialStateWrapper(nn.Module):
             )
 
     def get_initial_state(self, batch_size: int) -> rnn_state_t:
-        return torch.tile(self.initial_state[None], (batch_size, 1))
+        if self.rnn_type == "LSTMCell":
+            return tuple(
+                [
+                    torch.tile(self.initial_state[i][None], (batch_size, 1))
+                    for i in range(2)
+                ]
+            )
+        else:
+            return torch.tile(self.initial_state[None], (batch_size, 1))
 
     def forward(self, input: Tensor, state: opt_rnn_state_t = None) -> Tensor:
         if state is None:

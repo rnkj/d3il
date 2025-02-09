@@ -31,7 +31,7 @@ class RNN_Policy(nn.Module):
 
         self.model = hydra.utils.instantiate(model).to(device)
 
-    def forward(self, inputs, rnn_states):
+    def forward(self, inputs, rnn_states=None):
         # encode state and visual inputs
         # the encoder should be shared by all the baselines
 
@@ -64,10 +64,10 @@ class RNN_Policy(nn.Module):
             pred, rnn_states = self.model(obs, rnn_states)
         else:
             episode_length = obs.size(1)
-            pred_list = [None] * len(episode_length)
+            pred_list = [None] * episode_length
             for i in range(episode_length):
-                pred_list[i], rnn_states = self.model(obs[:, i : i + 1], rnn_states)
-            pred = torch.cat(pred_list, dim=1)
+                pred_list[i], rnn_states = self.model(obs[:, i], rnn_states)
+            pred = torch.stack(pred_list, dim=1)
 
         return pred, rnn_states
 

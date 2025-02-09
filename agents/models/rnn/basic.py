@@ -231,10 +231,11 @@ class ResidualRNN(nn.Module):
             if idx == 0 or idx == len(self.layers) - 1:
                 x = layer(x.to(torch.float32))
             else:
-                x, new_rnn_state = layer(
-                    x.to(torch.float32), rnn_states[idx - 1]
+                l1_state, l2_state = rnn_states[idx - 1]
+                x, new_l1_state, new_l2_state = layer(
+                    x.to(torch.float32), l1_state, l2_state
                 )
-                new_rnn_states[idx - 1] = new_rnn_state
+                new_rnn_states[idx - 1] = (new_l1_state, new_l2_state)
 
         return x, tuple(new_rnn_states)
 
