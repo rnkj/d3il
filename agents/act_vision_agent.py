@@ -233,7 +233,7 @@ class ActAgent(BaseAgent):
 
             if not (num_epoch + 1) % self.eval_every_n_epochs:
 
-                test_loss, test_mse, test_kl = [], [], []
+                test_loss_info = { "test/loss": [] }
                 for data in self.test_dataloader:
                     bp_imgs, inhand_imgs, obs, action, mask = data
 
@@ -247,36 +247,35 @@ class ActAgent(BaseAgent):
 
                     state_embedding = self.model.get_embedding(state)
 
-                    batch_losses = self.evaluate(state_embedding, action)
+                    batch_loss, loss_dict = self.evaluate(
+                        state_embedding, action
+                    )
 
-                    test_loss.append(batch_losses[0])
-                    test_mse.append(batch_losses[1])
-                    test_kl.append(batch_losses[2])
+                    for name, value in loss_dict.items():
+                        key = f"test/{name}"
+                        if key not in loss_dict.keys():
+                            test_loss_info[key] = [value]
+                        else:
+                            test_loss_info[key].append(value)
+                    test_loss_info["test/loss"].append(batch_loss)
 
-                avrg_test_loss = sum(test_loss) / len(test_loss)
-                avrg_test_mse = sum(test_mse) / len(test_mse)
-                avrg_test_kl = sum(test_kl) / len(test_kl)
+                length = len(test_loss_info["test/loss"])
+                for key, value in test_loss_info.items():
+                    test_loss_info[key] = sum(value) / length
+                test_loss_info["epoch"] = num_epoch
+                wandb.log(test_loss_info)
 
-                wandb.log(
-                    {
-                        "test/loss": avrg_test_loss,
-                        "test/mse": avrg_test_mse,
-                        "test/kl": avrg_test_kl,
-                        "epoch": num_epoch,
-                    }
-                )
-
+                avrg_test_loss = test_loss_info["test/loss"]
                 if avrg_test_loss < best_test_loss:
                     best_test_loss = avrg_test_loss
-                    self.store_model_weights(self.working_dir, sv_name=self.eval_model_name)
-                    
-                    wandb.log(
-                        {
-                            "best_model_epochs": num_epoch,
-                        }
+                    self.store_model_weights(
+                        self.working_dir, sv_name=self.eval_model_name
                     )
+
+                    wandb.log({"best_model_epochs": num_epoch})
                     log.info('New best test loss. Stored weights have been updated!')
 
+            train_loss_info = {}
             for data in self.train_dataloader:
                 bp_imgs, inhand_imgs, obs, action, mask = data
 
@@ -290,16 +289,13 @@ class ActAgent(BaseAgent):
 
                 state_embedding = self.model.get_embedding(state)
 
-                batch_losses = self.train_step(state_embedding, action)
+                batch_loss, loss_dict = self.train_step(state_embedding, action)
 
-                wandb.log(
-                    {
-                        "train/loss": batch_losses[0],
-                        "train/mse": batch_losses[1],
-                        "train/kl": batch_losses[2],
-                        "epoch": num_epoch,
-                    }
-                )
+                train_loss_info["train/loss"] = batch_loss
+                for name, value in loss_dict.items():
+                    train_loss_info[f"train/{name}"] = value
+                train_loss_info["epoch"] = num_epoch
+                wandb.log(train_loss_info)
 
         self.store_model_weights(self.working_dir, sv_name=self.last_model_name)
         log.info("Training done!")
@@ -330,7 +326,9 @@ class ActAgent(BaseAgent):
         total_loss.backward()
         self.optimizer.step()
         self.lr_scheduler.step()
-        return total_loss.item(), action_loss.item(), kl_loss.item()
+
+        loss_dict = {"action": action_loss.item(), "kl": kl_loss.item()}
+        return total_loss.item(), loss_dict
 
     @torch.no_grad()
     def evaluate(self, state, actions: torch.Tensor, goal: Optional[torch.Tensor] = None) -> float:
@@ -346,7 +344,9 @@ class ActAgent(BaseAgent):
 
         kl_loss = total_kld.mean()
         total_loss = action_loss + kl_loss
-        return total_loss.item(), action_loss.item(), kl_loss
+
+        loss_dict = {"action": action_loss.item(), "kl": kl_loss.item()}
+        return total_loss.item(), loss_dict
 
     @torch.no_grad()
     def predict(self, state, goal: Optional[torch.Tensor] = None, if_vision=False) -> torch.Tensor:
