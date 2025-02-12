@@ -352,7 +352,7 @@ class Aligning_ZipDataset(Aligning_Dataset):
         # state_files = glob.glob(data_dir + "/env*")
         state_files = np.load(sim_framework_path(data_directory), allow_pickle=True)
 
-        with zipfile.ZipFile(zip_path) as zf:
+        with zipfile.ZipFile(sim_framework_path(zip_path)) as zf:
             for file in tqdm(state_files):
                 with zf.open(f"aligning/all_data/state/{file}") as f:
                     env_state = pickle.load(f)
@@ -432,7 +432,7 @@ class Aligning_Img_ZipDataset(Aligning_Img_Dataset):
         bp_cam_imgs = []
         inhand_cam_imgs = []
 
-        with zipfile.ZipFile(zip_path) as zf:
+        with zipfile.ZipFile(sim_framework_path(zip_path)) as zf:
             for file in tqdm(state_files[:3]):
 
                 with zf.open(os.path.join(data_loc, "state", file)) as f:
