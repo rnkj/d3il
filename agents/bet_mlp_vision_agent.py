@@ -390,34 +390,76 @@ class BetMLP_Agent(BaseAgent):
 
     def train_vision_agent(self):
 
-        # train the model
-        self.model.train()
+        best_test_loss = 1e10
 
-        train_loss = []
         with utils.eval_mode(self.obs_encoding_net, self.action_ae):
-            for data in self.train_dataloader:
-                bp_imgs, inhand_imgs, obs, action, mask = data
+            for num_epoch in tqdm(range(self.epoch)):
 
-                bp_imgs = bp_imgs.to(self.device)
-                inhand_imgs = inhand_imgs.to(self.device)
+                if not (num_epoch + 1) % self.eval_every_n_epochs:
 
-                obs = self.scaler.scale_input(obs)
-                action = self.scaler.scale_output(action)
+                    test_loss_info = { "test/loss": [] }
+                    for data in self.test_dataloader:
+                        bp_imgs, inhand_imgs, obs, action, mask = data
 
-                state = (bp_imgs, inhand_imgs, obs)
+                        bp_imgs = bp_imgs.to(self.device)
+                        inhand_imgs = inhand_imgs.to(self.device)
 
-                loss, loss_components = self.train_step(state, action)
+                        obs = self.scaler.scale_input(obs)
+                        action = self.scaler.scale_output(action)
 
-                train_loss.append(loss.item())
+                        state = (bp_imgs, inhand_imgs, obs)
 
-                wandb.log(
-                    {
-                        "offset_loss": loss_components['offset'].item(),
-                        "class_loss": loss_components['class'].item(),
-                        "total_loss": loss_components['total'].item(),
-                    }
-                )
+                        batch_loss, loss_dict = self.evaluate(state, action)
+                        for name, value in loss_dict.items():
+                            # "total" is recorded as "loss"
+                            if name != "total":
+                                key = f"test/{name}"
+                                if key not in loss_dict.keys():
+                                    test_loss_info[key] = [value]
+                                else:
+                                    test_loss_info[key].append(value)
+                        test_loss_info["test/loss"].append(batch_loss)
 
+                    length = len(test_loss_info["test/loss"])
+                    for key, value in test_loss_info.items():
+                        test_loss_info[key] = sum(value) / length
+                    test_loss_info["epoch"] = num_epoch
+                    wandb.log(test_loss_info)
+
+                    avrg_test_loss = test_loss_info["test/loss"]
+                    if avrg_test_loss < best_test_loss:
+                        best_test_loss = avrg_test_loss
+                        self.store_model_weights(
+                            self.working_dir, sv_name=self.eval_model_name
+                        )
+
+                        wandb.log({"best_model_epochs": num_epoch})
+                        log.info('New best test loss. Stored weights have been updated!')
+
+                train_loss_info = {}
+                for data in self.train_dataloader:
+                    bp_imgs, inhand_imgs, obs, action, mask = data
+
+                    bp_imgs = bp_imgs.to(self.device)
+                    inhand_imgs = inhand_imgs.to(self.device)
+
+                    obs = self.scaler.scale_input(obs)
+                    action = self.scaler.scale_output(action)
+
+                    state = (bp_imgs, inhand_imgs, obs)
+
+                    batch_loss, loss_dict = self.train_step(state, action)
+
+                    train_loss_info["train/loss"] = batch_loss
+                    for name, value in loss_dict.items():
+                        # "total" is recorded as "loss"
+                        if name != "total":
+                            train_loss_info[f"train/{name}"] = value
+                    train_loss_info["epoch"] = num_epoch
+                    wandb.log(train_loss_info)
+
+        self.store_model_weights(self.working_dir, sv_name=self.last_model_name)
+        log.info("Training done!")
 
     def train_step(self, state: torch.Tensor, actions: torch.Tensor):
         """
@@ -447,16 +489,11 @@ class BetMLP_Agent(BaseAgent):
         """
         Method for evaluating the model on one epoch of data
         """
-        obs = self.scaler.scale_input(state)
-        act = self.scaler.scale_output(action)
 
-        enc_obs = self.obs_encoding_net(obs)
-        latent = self.action_ae.encode_into_latent(act, enc_obs)
-        _, loss, loss_components = self.model.get_latent_and_loss(
-            obs_rep=enc_obs,
-            target_latents=latent,
-            return_loss_components=True,
-        )
+        # obs = self.scaler.scale_input(state)
+        # act = self.scaler.scale_output(action)
+        latent = self.action_ae.encode_into_latent(action)
+        _, loss, loss_components = self.model.get_latent_and_loss(inputs=state, latent=latent)
 
         return loss, loss_components
 
