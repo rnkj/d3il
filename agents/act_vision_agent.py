@@ -227,29 +227,85 @@ class ActAgent(BaseAgent):
 
     def train_vision_agent(self):
 
-        train_loss = []
-        for data in self.train_dataloader:
-            bp_imgs, inhand_imgs, obs, action, mask = data
+        best_test_loss = 1e10
 
-            bp_imgs = bp_imgs.to(self.device)
-            inhand_imgs = inhand_imgs.to(self.device)
+        for num_epoch in tqdm(range(self.epoch)):
 
-            obs = self.scaler.scale_input(obs)
-            action = self.scaler.scale_output(action)
+            if not (num_epoch + 1) % agent.eval_every_n_epochs:
 
-            state = (bp_imgs, inhand_imgs, obs)
+                test_loss, test_mse, test_kl = [], [], []
+                for data in self.test_dataloader:
+                    bp_imgs, inhand_imgs, obs, action, mask = data
 
-            state_embedding = self.model.get_embedding(state)
+                    bp_imgs = bp_imgs.to(self.device)
+                    inhand_imgs = inhand_imgs.to(self.device)
 
-            batch_loss = self.train_step(state_embedding, action)
+                    obs = self.scaler.scale_input(obs)
+                    action = self.scaler.scale_output(action)
 
-            train_loss.append(batch_loss)
+                    state = (bp_imgs, inhand_imgs, obs)
 
-            wandb.log(
-                {
-                    "loss": batch_loss,
-                }
-            )
+                    state_embedding = self.model.get_embedding(state)
+
+                    batch_losses = self.evaluate(state_embedding, action)
+
+                    test_loss.append(batch_losses[0])
+                    test_mse.append(batch_losses[1])
+                    test_kl.append(batch_losses[2])
+
+                avrg_test_loss = sum(test_loss) / len(test_loss)
+                avrg_test_mse = sum(test_mse) / len(test_mse)
+                avrg_test_kl = sum(test_kl) / len(test_kl)
+
+                wandb.log(
+                    {
+                        "test/loss": avrg_test_loss,
+                        "test/mse": avrg_test_mse,
+                        "test/kl": avrg_test_kl,
+                        "epoch": num_epoch,
+                    }
+                )
+
+                if avrg_test_loss < best_test_loss:
+                    best_test_loss = avrg_test_loss
+                    self.store_model_weights(self.working_dir, sv_name=self.eval_model_name)
+                    
+                    wandb.log(
+                        {
+                            "best_model_epochs": num_epoch,
+                        }
+                    )
+                    log.info('New best test loss. Stored weights have been updated!')
+
+            train_loss, train_mse, train_kl = [], [], []
+            for data in self.train_dataloader:
+                bp_imgs, inhand_imgs, obs, action, mask = data
+
+                bp_imgs = bp_imgs.to(self.device)
+                inhand_imgs = inhand_imgs.to(self.device)
+
+                obs = self.scaler.scale_input(obs)
+                action = self.scaler.scale_output(action)
+
+                state = (bp_imgs, inhand_imgs, obs)
+
+                state_embedding = self.model.get_embedding(state)
+
+                batch_losses = self.train_step(state_embedding, action)
+
+                train_loss.append(batch_loss)
+
+                wandb.log(
+                    {
+                        "train/loss": avrg_train_loss,
+                        "train/mse": avrg_train_mse,
+                        "train/kl": avrg_train_kl,
+                        "epoch": num_epoch,
+                    }
+                )
+
+        self.store_model_weights(self.working_dir, sv_name=self.last_model_name)
+        log.info("Training done!")
 
     def train_step(self, state, actions: torch.Tensor, goal: Optional[torch.Tensor] = None):
         """
@@ -266,17 +322,18 @@ class ActAgent(BaseAgent):
         action_loss = torch.mean((a_hat - actions) ** 2)
         total_kld, dimension_wise_kld, mean_kld = self.kl_divergence(mu, logvar)
 
-        total_loss = action_loss + total_kld.mean()
-        wandb.log(
-            {
-                "kl_loss": total_kld.mean(),
-            }
-        )
+        kl_loss = total_kld.mean()
+        total_loss = action_loss + kl_loss
+        # wandb.log(
+        #     {
+        #         "kl_loss": total_kld.mean(),
+        #     }
+        # )
         self.optimizer.zero_grad(set_to_none=True)
         total_loss.backward()
         self.optimizer.step()
         self.lr_scheduler.step()
-        return total_loss.item()
+        return total_loss.item(), action_loss.item(), kl_loss.item()
 
     @torch.no_grad()
     def evaluate(self, state, actions: torch.Tensor, goal: Optional[torch.Tensor] = None) -> float:
@@ -293,12 +350,9 @@ class ActAgent(BaseAgent):
         action_loss = torch.mean((a_hat - actions) ** 2)
         total_kld, dimension_wise_kld, mean_kld = self.kl_divergence(mu, logvar)
 
-        total_loss = action_loss + total_kld.mean()
-
-        # a_hat, (mu, logvar) = self.model(state, goal)
-        # loss = torch.mean((a_hat - actions) ** 2)
-        # total_mse = loss.item()
-        return total_loss.item()
+        kl_loss = total_kld.mean()
+        total_loss = action_loss + kl_loss
+        return total_loss.item(), action_loss.item(), kl_loss
 
     @torch.no_grad()
     def predict(self, state, goal: Optional[torch.Tensor] = None, if_vision=False) -> torch.Tensor:
