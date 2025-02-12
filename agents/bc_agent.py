@@ -176,28 +176,71 @@ class BC_Agent(BaseAgent):
 
     def train_vision_agent(self):
 
-        train_loss = []
-        for data in self.train_dataloader:
-            bp_imgs, inhand_imgs, obs, action, mask = data
-            # obs, action, mask = data
+        best_test_loss = 1e10
 
-            bp_imgs = bp_imgs.to(self.device)
-            inhand_imgs = inhand_imgs.to(self.device)
+        for num_epoch in tqdm(range(self.epoch)):
 
-            obs = self.scaler.scale_input(obs)
-            action = self.scaler.scale_output(action)
+            if not (num_epoch + 1) % self.eval_every_n_epochs:
 
-            state = (bp_imgs, inhand_imgs, obs)
+                test_loss_info = { "test/loss": [] }
+                for data in self.test_dataloader:
+                    bp_imgs, inhand_imgs, obs, action, mask = data
+                    # obs, action, mask = data
 
-            batch_loss = self.train_step(state, action)
+                    bp_imgs = bp_imgs.to(self.device)
+                    inhand_imgs = inhand_imgs.to(self.device)
 
-            train_loss.append(batch_loss)
+                    obs = self.scaler.scale_input(obs)
+                    action = self.scaler.scale_output(action)
 
-            wandb.log(
-                {
-                    "loss": batch_loss,
-                }
-            )
+                    state = (bp_imgs, inhand_imgs, obs)
+
+                    batch_loss, loss_dict = self.evaluate(state, action)
+                    for name, value in loss_dict.items():
+                        key = f"test/{name}"
+                        if key not in loss_dict.keys():
+                            test_loss_info[key] = [value]
+                        else:
+                            test_loss_info[key].append(value)
+                    test_loss_info["test/loss"].append(batch_loss)
+
+                length = len(test_loss_info["test/loss"])
+                for key, value in test_loss_info.items():
+                    test_loss_info[key] = sum(value) / length
+                test_loss_info["epoch"] = num_epoch
+                wandb.log(test_loss_info)
+
+                avrg_test_loss = test_loss_info["test/loss"]
+                if avrg_test_loss < best_test_loss:
+                    best_test_loss = avrg_test_loss
+                    self.store_model_weights(
+                        self.working_dir, sv_name=self.eval_model_name
+                    )
+
+                    wandb.log({"best_model_epochs": num_epoch})
+                    log.info('New best test loss. Stored weights have been updated!')
+
+
+            train_loss_info = {}
+            for data in self.train_dataloader:
+                bp_imgs, inhand_imgs, obs, action, mask = data
+                # obs, action, mask = data
+
+                bp_imgs = bp_imgs.to(self.device)
+                inhand_imgs = inhand_imgs.to(self.device)
+
+                obs = self.scaler.scale_input(obs)
+                action = self.scaler.scale_output(action)
+
+                state = (bp_imgs, inhand_imgs, obs)
+
+                batch_loss, loss_dict = self.train_step(state, action)
+
+                train_loss_info["train/loss"] = batch_loss
+                for name, value in loss_dict.items():
+                    train_loss_info[f"train/{name}"] = value
+                train_loss_info["epoch"] = num_epoch
+                wandb.log(train_loss_info)
 
     def train_step(self, state, actions: torch.Tensor, goal: Optional[torch.Tensor] = None):
         """
@@ -216,7 +259,8 @@ class BC_Agent(BaseAgent):
         loss.backward()
         self.optimizer.step()
 
-        return loss.item()
+        loss_dict = {"mse": loss.item()}
+        return loss.item(), loss_dict
 
     @torch.no_grad()
     def evaluate(self, state, action: torch.Tensor, goal: Optional[torch.Tensor] = None):
@@ -225,17 +269,15 @@ class BC_Agent(BaseAgent):
         """
         self.model.eval()
 
-        total_mse = 0.0
-
         if goal is not None:
             goal = self.scaler.scale_input(goal)
             out = self.model(torch.cat([state, goal], dim=-1))
         else:
             out = self.model(state)
+        loss = F.mse_loss(out, action)  # , reduction="none")
 
-        mse = F.mse_loss(out, action)  # , reduction="none")
-        total_mse += mse.mean(dim=-1).sum().item()
-        return total_mse
+        loss_dict = {"mse": loss.item()}
+        return loss.item(), loss_dict
 
     @torch.no_grad()
     def predict(self, state, goal: Optional[torch.Tensor] = None, if_vision=False) -> torch.Tensor:
