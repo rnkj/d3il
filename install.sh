@@ -32,7 +32,9 @@ conda install mamba -c conda-forge -y -q
 echo Installing dependencies...
 
 mamba install -c conda-forge mkl==2024.0.0
-mamba install -c pytorch -c nvidia pytorch==1.13.1 torchvision==0.14.1 pytorch-cuda=11.7
+mamba install -c conda-forge "numpy<2.0"
+# mamba install -c pytorch -c nvidia pytorch==1.13.1 torchvision==0.14.1 pytorch-cuda=11.7
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 
 mamba install -c conda-forge pybullet pyyaml scipy opencv pinocchio matplotlib gin-config tyro gym==0.21.0 -y -q
 
