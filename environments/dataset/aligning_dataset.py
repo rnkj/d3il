@@ -1,6 +1,7 @@
 import random
 from typing import Optional, Callable, Any
 import logging
+import zipfile
 
 import os
 import glob
@@ -316,3 +317,189 @@ class Aligning_Img_Dataset(TrajectoryDataset):
         inhand_imgs = self.inhand_cam_imgs[i][start:end]
 
         return bp_imgs, inhand_imgs, obs, act, mask
+    
+
+class Aligning_ZipDataset(Aligning_Dataset):
+
+    def __init__(
+            self,
+            zip_path: os.PathLike,
+            data_directory: os.PathLike,
+            device="cpu",
+            obs_dim: int = 20,
+            action_dim: int = 2,
+            max_len_data: int = 256,
+            window_size: int = 1,
+    ):
+
+        super(Aligning_Dataset, self).__init__(
+            data_directory=data_directory,
+            device=device,
+            obs_dim=obs_dim,
+            action_dim=action_dim,
+            max_len_data=max_len_data,
+            window_size=window_size
+        )
+        self.zip_path = zip_path
+
+        logging.info("Loading Robot Push Dataset")
+
+        inputs = []
+        actions = []
+        masks = []
+
+        # data_dir = sim_framework_path(data_directory)
+        # state_files = glob.glob(data_dir + "/env*")
+        state_files = np.load(sim_framework_path(data_directory), allow_pickle=True)
+
+        with zipfile.ZipFile(sim_framework_path(zip_path)) as zf:
+            for file in tqdm(state_files):
+                with zf.open(f"aligning/all_data/state/{file}") as f:
+                    env_state = pickle.load(f)
+
+                zero_obs = np.zeros((1, self.max_len_data, self.obs_dim), dtype=np.float32)
+                zero_action = np.zeros((1, self.max_len_data, self.action_dim), dtype=np.float32)
+                zero_mask = np.zeros((1, self.max_len_data), dtype=np.float32)
+
+                # robot and box positions
+                robot_des_pos = env_state['robot']['des_c_pos']
+
+                robot_c_pos = env_state['robot']['c_pos']
+
+                push_box_pos = env_state['push-box']['pos']
+                push_box_quat = env_state['push-box']['quat']
+
+                target_box_pos = env_state['target-box']['pos']
+                target_box_quat = env_state['target-box']['quat']
+
+                input_state = np.concatenate((robot_des_pos, robot_c_pos, push_box_pos, push_box_quat, target_box_pos, target_box_quat), axis=-1)
+
+                vel_state = robot_des_pos[1:] - robot_des_pos[:-1]
+
+                valid_len = len(input_state) - 1
+
+                zero_obs[0, :valid_len, :] = input_state[:-1]
+                zero_action[0, :valid_len, :] = vel_state
+                zero_mask[0, :valid_len] = 1
+
+                inputs.append(zero_obs)
+                actions.append(zero_action)
+                masks.append(zero_mask)
+
+        # shape: B, T, n
+        self.observations = torch.from_numpy(np.concatenate(inputs)).to(device).float()
+        self.actions = torch.from_numpy(np.concatenate(actions)).to(device).float()
+        self.masks = torch.from_numpy(np.concatenate(masks)).to(device).float()
+
+        self.num_data = len(self.observations)
+
+        self.slices = self.get_slices()
+
+
+class Aligning_Img_ZipDataset(Aligning_Img_Dataset):
+    def __init__(
+            self,
+            zip_path: os.PathLike,
+            data_directory: os.PathLike,
+            device="cpu",
+            obs_dim: int = 20,
+            action_dim: int = 2,
+            max_len_data: int = 256,
+            window_size: int = 1,
+    ):
+
+        super(Aligning_Img_Dataset, self).__init__(
+            data_directory=data_directory,
+            device=device,
+            obs_dim=obs_dim,
+            action_dim=action_dim,
+            max_len_data=max_len_data,
+            window_size=window_size
+        )
+        self.zip_path = zip_path
+
+        logging.info("Loading Robot Push Dataset")
+
+        inputs = []
+        actions = []
+        masks = []
+
+        # data_dir = sim_framework_path("environments/dataset/data/aligning/all_data")
+
+        data_loc = "aligning/all_data"
+        state_files = np.load(sim_framework_path(data_directory), allow_pickle=True)
+
+        bp_cam_imgs = []
+        inhand_cam_imgs = []
+
+        with zipfile.ZipFile(sim_framework_path(zip_path)) as zf:
+            for file in tqdm(state_files[:3]):
+
+                with zf.open(os.path.join(data_loc, "state", file)) as f:
+                    env_state = pickle.load(f)
+
+                zero_obs = np.zeros((1, self.max_len_data, self.obs_dim), dtype=np.float32)
+                zero_action = np.zeros((1, self.max_len_data, self.action_dim), dtype=np.float32)
+                zero_mask = np.zeros((1, self.max_len_data), dtype=np.float32)
+
+                # robot and box positions
+                robot_des_pos = env_state['robot']['des_c_pos']
+                # robot_c_pos = env_state['robot']['c_pos']
+
+                length = len(robot_des_pos)
+                bp_images = []
+                inhand_images = []
+
+                file_name = os.path.basename(file).split('.')[0]
+                for img_i in range(length):
+                    img_loc = os.path.join(
+                        data_loc, "images/bp-cam", file_name, f"{img_i}.jpg"
+                    )
+                    image = cv2.imdecode(
+                        np.frombuffer(zf.read(img_loc), np.uint8),
+                        cv2.IMREAD_COLOR,
+                    )
+                    image = image.transpose((2, 0, 1)) / 255.
+                    image = torch.from_numpy(image).to(self.device).float().unsqueeze(0)
+                    bp_images.append(image)
+
+                    img_loc = os.path.join(
+                        data_loc, "images/inhand-cam", file_name, f"{img_i}.jpg"
+                    )
+                    image = cv2.imdecode(
+                        np.frombuffer(zf.read(img_loc), np.uint8),
+                        cv2.IMREAD_COLOR,
+                    )
+                    image = image.transpose((2, 0, 1)) / 255.
+                    image = torch.from_numpy(image).to(self.device).float().unsqueeze(0)
+                    inhand_images.append(image)
+
+                bp_images = torch.concatenate(bp_images, dim=0)
+                inhand_images = torch.concatenate(inhand_images, dim=0)
+
+                vel_state = robot_des_pos[1:] - robot_des_pos[:-1]
+
+                valid_len = len(vel_state)
+
+                zero_obs[0, :valid_len, :] = robot_des_pos[:-1]
+                zero_action[0, :valid_len, :] = vel_state
+                zero_mask[0, :valid_len] = 1
+
+                bp_cam_imgs.append(bp_images)
+                inhand_cam_imgs.append(inhand_images)
+
+                inputs.append(zero_obs)
+                actions.append(zero_action)
+                masks.append(zero_mask)
+
+        self.bp_cam_imgs = bp_cam_imgs
+        self.inhand_cam_imgs = inhand_cam_imgs
+
+        # shape: B, T, n
+        self.observations = torch.from_numpy(np.concatenate(inputs)).to(device).float()
+        self.actions = torch.from_numpy(np.concatenate(actions)).to(device).float()
+        self.masks = torch.from_numpy(np.concatenate(masks)).to(device).float()
+
+        self.num_data = len(self.observations)
+
+        self.slices = self.get_slices()
