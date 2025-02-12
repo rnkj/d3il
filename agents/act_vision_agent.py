@@ -231,7 +231,7 @@ class ActAgent(BaseAgent):
 
         for num_epoch in tqdm(range(self.epoch)):
 
-            if not (num_epoch + 1) % agent.eval_every_n_epochs:
+            if not (num_epoch + 1) % self.eval_every_n_epochs:
 
                 test_loss, test_mse, test_kl = [], [], []
                 for data in self.test_dataloader:
@@ -277,7 +277,6 @@ class ActAgent(BaseAgent):
                     )
                     log.info('New best test loss. Stored weights have been updated!')
 
-            train_loss, train_mse, train_kl = [], [], []
             for data in self.train_dataloader:
                 bp_imgs, inhand_imgs, obs, action, mask = data
 
@@ -293,13 +292,11 @@ class ActAgent(BaseAgent):
 
                 batch_losses = self.train_step(state_embedding, action)
 
-                train_loss.append(batch_loss)
-
                 wandb.log(
                     {
-                        "train/loss": avrg_train_loss,
-                        "train/mse": avrg_train_mse,
-                        "train/kl": avrg_train_kl,
+                        "train/loss": batch_losses[0],
+                        "train/mse": batch_losses[1],
+                        "train/kl": batch_losses[2],
                         "epoch": num_epoch,
                     }
                 )
@@ -342,9 +339,6 @@ class ActAgent(BaseAgent):
         """
         # state, actions, goal = self.process_batch(batch, predict=True)
         self.model.eval()
-
-        state = self.scaler.scale_input(state)
-        actions = self.scaler.scale_output(actions)
 
         a_hat, (mu, logvar) = self.model.model(state, goal, actions)
         action_loss = torch.mean((a_hat - actions) ** 2)
