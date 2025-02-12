@@ -242,6 +242,9 @@ class BC_Agent(BaseAgent):
                 train_loss_info["epoch"] = num_epoch
                 wandb.log(train_loss_info)
 
+        self.store_model_weights(self.working_dir, sv_name=self.last_model_name)
+        log.info("Training done!")
+
     def train_step(self, state, actions: torch.Tensor, goal: Optional[torch.Tensor] = None):
         """
         Executes a single training step on a mini-batch of data
