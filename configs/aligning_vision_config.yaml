@@ -12,6 +12,7 @@ eval_data_path: environments/dataset/data/aligning/eval_files.pkl
 wandb:
   entity: ???
   project: ???
+  mode: disabled
 
 group: aligning_${agent_name}
 
