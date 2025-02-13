@@ -181,24 +181,72 @@ class Gpt_Agent(BaseAgent):
 
     def train_vision_agent(self):
 
-        train_loss = []
+        best_test_loss = 1e10
 
-        for data in self.train_dataloader:
-            bp_imgs, inhand_imgs, obs, action, mask = data
+        for num_epoch in tqdm(range(self.epoch)):
 
-            bp_imgs = bp_imgs.to(self.device)
-            inhand_imgs = inhand_imgs.to(self.device)
+            if not (num_epoch + 1) % self.eval_every_n_epochs:
 
-            obs = self.scaler.scale_input(obs)
-            action = self.scaler.scale_output(action)
+                test_loss_info = { "test/loss": [] }
+                for data in self.test_dataloader:
+                    bp_imgs, inhand_imgs, obs, action, mask = data
 
-            state = (bp_imgs, inhand_imgs, obs)
+                    bp_imgs = bp_imgs.to(self.device)
+                    inhand_imgs = inhand_imgs.to(self.device)
 
-            batch_loss = self.train_step(state, action)
+                    obs = self.scaler.scale_input(obs)
+                    action = self.scaler.scale_output(action)
 
-            train_loss.append(batch_loss)
+                    state = (bp_imgs, inhand_imgs, obs)
 
-            wandb.log({"train_loss": batch_loss})
+                    batch_loss, loss_dict = self.evaluate(state, action)
+                    for name, value in loss_dict.items():
+                        key = f"test/{name}"
+                        if key not in loss_dict.keys():
+                            test_loss_info[key] = [value]
+                        else:
+                            test_loss_info[key].append(value)
+                    test_loss_info["test/loss"].append(batch_loss)
+
+                length = len(test_loss_info["test/loss"])
+                for key, value in test_loss_info.items():
+                    test_loss_info[key] = sum(value) / length
+                test_loss_info["epoch"] = num_epoch
+                wandb.log(test_loss_info)
+
+                avrg_test_loss = test_loss_info["test/loss"]
+                if avrg_test_loss < best_test_loss:
+                    best_test_loss = avrg_test_loss
+                    self.store_model_weights(
+                        self.working_dir, sv_name=self.eval_model_name
+                    )
+
+                    wandb.log({"best_model_epochs": num_epoch})
+                    log.info('New best test loss. Stored weights have been updated!')
+
+
+            train_loss_info = {}
+            for data in self.train_dataloader:
+                bp_imgs, inhand_imgs, obs, action, mask = data
+
+                bp_imgs = bp_imgs.to(self.device)
+                inhand_imgs = inhand_imgs.to(self.device)
+
+                obs = self.scaler.scale_input(obs)
+                action = self.scaler.scale_output(action)
+
+                state = (bp_imgs, inhand_imgs, obs)
+
+                batch_loss, loss_dict = self.train_step(state, action)
+
+                train_loss_info["train/loss"] = batch_loss
+                for name, value in loss_dict.items():
+                    train_loss_info[f"train/{name}"] = value
+                train_loss_info["epoch"] = num_epoch
+                wandb.log(train_loss_info)
+
+        self.store_model_weights(self.working_dir, sv_name=self.last_model_name)
+        log.info("Training done!")
 
     def train_step(self, state: torch.Tensor, actions: torch.Tensor):
         """
@@ -215,7 +263,8 @@ class Gpt_Agent(BaseAgent):
         loss.backward()
         self.optimizer.step()
 
-        return loss.item()
+        loss_dict = { "mse": loss.item() }
+        return loss.item(), loss_dict
 
     @torch.no_grad()
     def evaluate(self, state: torch.Tensor, action: torch.Tensor):
@@ -224,14 +273,12 @@ class Gpt_Agent(BaseAgent):
         """
         self.model.eval()
 
-        total_mse = 0.0
-
         out = self.model(state)
 
-        mse = F.mse_loss(out, action)  # , reduction="none")
-        total_mse += mse.mean(dim=-1).sum().item()
+        loss = F.mse_loss(out, action)  # , reduction="none")
 
-        return total_mse
+        loss_dict = { "mse": loss.item() }
+        return loss.item(), loss_dict
 
     def predict(self, state, sample=False, if_vision=False):
         self.model.eval()
