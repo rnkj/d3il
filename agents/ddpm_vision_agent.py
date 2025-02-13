@@ -332,8 +332,8 @@ class DiffusionAgent(BaseAgent):
         if self.steps % self.update_ema_every_n_steps == 0:
             self.ema_helper.update(self.model.parameters())
 
-        loss_dict = { "score": loss }
-        return loss, loss_dict
+        loss_dict = { "score": loss.item() }
+        return loss.item(), loss_dict
 
     @torch.no_grad()
     def evaluate(
@@ -364,8 +364,8 @@ class DiffusionAgent(BaseAgent):
         if self.use_ema:
             self.ema_helper.restore(self.model.parameters())
  
-        loss_dict = { "score": loss }
-        return loss, loss_dict
+        loss_dict = { "score": loss.item() }
+        return loss.item(), loss_dict
 
     @torch.no_grad()
     def predict(self, state: torch.Tensor, goal: Optional[torch.Tensor] = None, extra_args=None, if_vision=False) -> torch.Tensor:
