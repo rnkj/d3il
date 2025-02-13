@@ -32,31 +32,6 @@ class DiffusionPolicy(nn.Module):
 
     def get_embedding(self, inputs):
 
-        if self.visual_input:
-            agentview_image, in_hand_image, state = inputs
-
-            B, T, C, H, W = agentview_image.size()
-
-            agentview_image = agentview_image.view(B * T, C, H, W)
-            in_hand_image = in_hand_image.view(B * T, C, H, W)
-            state = state.view(B * T, -1)
-
-            # bp_imgs = einops.rearrange(bp_imgs, "B T C H W -> (B T) C H W")
-            # inhand_imgs = einops.rearrange(inhand_imgs, "B T C H W -> (B T) C H W")
-
-            obs_dict = {"agentview_image": agentview_image,
-                        "in_hand_image": in_hand_image,
-                        "robot_ee_pos": state}
-
-            obs = self.obs_encoder(obs_dict)
-            obs = obs.view(B, T, -1)
-
-        else:
-            obs = self.obs_encoder(inputs)
-
-        return obs
-
-    def forward(self, inputs, goal, action=None, if_train=False):
         # encode state and visual inputs
         # the encoder should be shared by all the baselines
 
@@ -82,12 +57,16 @@ class DiffusionPolicy(nn.Module):
         else:
             obs = self.obs_encoder(inputs)
 
-        if if_train:
-            return self.model.loss(action, obs, goal)
+        return obs
 
+    def loss(self, inputs, goal, action):
+        obs = self.get_embedding(inputs)
+        return self.model.loss(action, obs, goal)
+
+    def forward(self, inputs, goal):
+        obs = self.get_embedding(inputs)
         # make prediction
         pred = self.model(obs, goal)
-
         return pred
 
     def get_params(self):
@@ -230,30 +209,84 @@ class DiffusionAgent(BaseAgent):
         log.info("Training done!")
 
     def train_vision_agent(self):
-        train_loss = []
 
-        for data in self.train_dataloader:
-            bp_imgs, inhand_imgs, obs, action, mask = data
+        best_test_loss = 1e10
 
-            bp_imgs = bp_imgs.to(self.device)
-            inhand_imgs = inhand_imgs.to(self.device)
+        for num_epoch in tqdm(range(self.epoch)):
 
-            obs = self.scaler.scale_input(obs)
-            action = self.scaler.scale_output(action)
+            if not (num_epoch + 1) % self.eval_every_n_epochs:
 
-            action = action[:, self.obs_seq_len - 1:, :].contiguous()
+                test_loss_info = { "test/loss": [] }
+                for data in self.test_dataloader:
+                    bp_imgs, inhand_imgs, obs, action, mask = data
 
-            obs = obs[:, :self.obs_seq_len].contiguous()
-            bp_imgs = bp_imgs[:, :self.obs_seq_len].contiguous()
-            inhand_imgs = inhand_imgs[:, :self.obs_seq_len].contiguous()
+                    bp_imgs = bp_imgs.to(self.device)
+                    inhand_imgs = inhand_imgs.to(self.device)
 
-            state = (bp_imgs, inhand_imgs, obs)
+                    obs = self.scaler.scale_input(obs)
+                    action = self.scaler.scale_output(action)
 
-            batch_loss = self.train_step(state, action)
+                    action = action[:, self.obs_seq_len - 1:, :].contiguous()
 
-            train_loss.append(batch_loss)
+                    obs = obs[:, :self.obs_seq_len].contiguous()
+                    bp_imgs = bp_imgs[:, :self.obs_seq_len].contiguous()
+                    inhand_imgs = inhand_imgs[:, :self.obs_seq_len].contiguous()
 
-            wandb.log({"train_loss": batch_loss})
+                    state = (bp_imgs, inhand_imgs, obs)
+
+                    batch_loss, loss_dict = self.evaluate(state, action)
+                    for name, value in loss_dict.items():
+                        key = f"test/{name}"
+                        if key not in loss_dict.keys():
+                            test_loss_info[key] = [value]
+                        else:
+                            test_loss_info[key].append(value)
+                    test_loss_info["test/loss"].append(batch_loss)
+
+                length = len(test_loss_info["test/loss"])
+                for key, value in test_loss_info.items():
+                    test_loss_info[key] = sum(value) / length
+                test_loss_info["epoch"] = num_epoch
+                wandb.log(test_loss_info)
+
+                avrg_test_loss = test_loss_info["test/loss"]
+                if avrg_test_loss < best_test_loss:
+                    best_test_loss = avrg_test_loss
+                    self.store_model_weights(
+                        self.working_dir, sv_name=self.eval_model_name
+                    )
+
+                    wandb.log({"best_model_epochs": num_epoch})
+                    log.info('New best test loss. Stored weights have been updated!')
+
+
+            train_loss_info = {}
+            for data in self.train_dataloader:
+                bp_imgs, inhand_imgs, obs, action, mask = data
+
+                bp_imgs = bp_imgs.to(self.device)
+                inhand_imgs = inhand_imgs.to(self.device)
+
+                obs = self.scaler.scale_input(obs)
+                action = self.scaler.scale_output(action)
+
+                action = action[:, self.obs_seq_len - 1:, :].contiguous()
+
+                obs = obs[:, :self.obs_seq_len].contiguous()
+                bp_imgs = bp_imgs[:, :self.obs_seq_len].contiguous()
+                inhand_imgs = inhand_imgs[:, :self.obs_seq_len].contiguous()
+
+                state = (bp_imgs, inhand_imgs, obs)
+                batch_loss, loss_dict = self.train_step(state, action)
+
+                train_loss_info["train/loss"] = batch_loss
+                for name, value in loss_dict.items():
+                    train_loss_info[f"train/{name}"] = value
+                train_loss_info["epoch"] = num_epoch
+                wandb.log(train_loss_info)
+
+        self.store_model_weights(self.working_dir, sv_name=self.last_model_name)
+        log.info("Training done!")
 
     def train_step(self, state: torch.Tensor, action: torch.Tensor, goal: Optional[torch.Tensor] = None) -> float:
 
@@ -272,7 +305,7 @@ class DiffusionAgent(BaseAgent):
         # state = state[:, :self.obs_seq_len, :]
 
         # Compute the loss.
-        loss = self.model(state, goal, action=action, if_train=True)
+        loss = self.model.loss(state, goal, action)
         # Before the backward pass, zero all the network gradients
         self.optimizer.zero_grad()
         # Backward pass: compute gradient of the loss with respect to parameters
@@ -285,24 +318,25 @@ class DiffusionAgent(BaseAgent):
         # update the ema model
         if self.steps % self.update_ema_every_n_steps == 0:
             self.ema_helper.update(self.model.parameters())
-        return loss
+
+        loss_dict = { "score": loss.item() }
+        return loss.item(), loss_dict
 
     @torch.no_grad()
     def evaluate(
-            self, state: torch.tensor, action: torch.tensor, goal: Optional[torch.Tensor] = None
+        self, state: torch.tensor, action: torch.tensor, goal: Optional[torch.Tensor] = None
     ) -> float:
 
         # scale data if necessarry, otherwise the scaler will return unchanged values
-        state = self.scaler.scale_input(state)
-        action = self.scaler.scale_output(action)
+        # state = self.scaler.scale_input(state)
+        # action = self.scaler.scale_output(action)
 
-        action = action[:, self.obs_seq_len - 1:, :]
-        state = state[:, :self.obs_seq_len, :]
+        # action = action[:, self.obs_seq_len - 1:, :]
+        # state = state[:, :self.obs_seq_len, :]
 
         if goal is not None:
             goal = self.scaler.scale_input(goal)
 
-        total_mse = 0.0
         # use the EMA model variant
         if self.use_ema:
             self.ema_helper.store(self.model.parameters())
@@ -311,17 +345,17 @@ class DiffusionAgent(BaseAgent):
         self.model.eval()
 
         # Compute the loss.
-        loss = self.model.loss(action, state, goal)
+        loss = self.model.loss(state, goal, action)
 
         # model_pred = self.model(state, goal)
         # mse = nn.functional.mse_loss(model_pred, action, reduction="none")
 
-        total_mse += loss.mean().item()
-
         # restore the previous model parameters
         if self.use_ema:
             self.ema_helper.restore(self.model.parameters())
-        return total_mse
+
+        loss_dict = { "score": loss.item() }
+        return loss.item(), loss_dict
 
     def reset(self):
         """ Resets the context of the model."""
