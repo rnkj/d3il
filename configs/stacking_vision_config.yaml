@@ -14,6 +14,7 @@ eval_data_path: environments/dataset/data/stacking/vision_eval_files.pkl
 wandb:
   entity: ???
   project: ???
+  mode: disabled
 
 group: stacking_${agent_name}
 

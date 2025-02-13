@@ -15,6 +15,7 @@ num_boxes: 6
 wandb:
   entity: ???
   project: ???
+  mode: disabled
 
 group: sorting_${agent_name}
 

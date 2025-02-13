@@ -261,24 +261,73 @@ class BesoAgent(BaseAgent):
         log.info("Training done!")
 
     def train_vision_agent(self):
-        train_loss = []
 
-        for data in self.train_dataloader:
-            bp_imgs, inhand_imgs, obs, action, mask = data
+        best_test_loss = 1e10
 
-            bp_imgs = bp_imgs.to(self.device)
-            inhand_imgs = inhand_imgs.to(self.device)
+        for num_epoch in tqdm(range(self.epoch)):
 
-            obs = self.scaler.scale_input(obs)
-            action = self.scaler.scale_output(action)
+            if not (num_epoch + 1) % self.eval_every_n_epochs:
 
-            state = (bp_imgs, inhand_imgs, obs)
+                test_loss_info = { "test/loss": [] }
+                for data in self.test_dataloader:
+                    bp_imgs, inhand_imgs, obs, action, mask = data
 
-            batch_loss = self.train_step(state, action)
+                    bp_imgs = bp_imgs.to(self.device)
+                    inhand_imgs = inhand_imgs.to(self.device)
 
-            train_loss.append(batch_loss)
+                    obs = self.scaler.scale_input(obs)
+                    action = self.scaler.scale_output(action)
 
-            wandb.log({"train_loss": batch_loss})
+                    state = (bp_imgs, inhand_imgs, obs)
+
+                    batch_loss, loss_dict = self.evaluate(state, action)
+
+                    for name, value in loss_dict.items():
+                        key = f"test/{name}"
+                        if key not in loss_dict.keys():
+                            test_loss_info[key] = [value]
+                        else:
+                            test_loss_info[key].append(value)
+                    test_loss_info["test/loss"].append(batch_loss)
+
+                length = len(test_loss_info["test/loss"])
+                for key, value in test_loss_info.items():
+                    test_loss_info[key] = sum(value) / length
+                test_loss_info["epoch"] = num_epoch
+                wandb.log(test_loss_info)
+
+                avrg_test_loss = test_loss_info["test/loss"]
+                if avrg_test_loss < best_test_loss:
+                    best_test_loss = avrg_test_loss
+                    self.store_model_weights(
+                        self.working_dir, sv_name=self.eval_model_name
+                    )
+
+                    wandb.log({"best_model_epochs": num_epoch})
+                    log.info('New best test loss. Stored weights have been updated!')
+
+            train_loss_info = {}
+            for data in self.train_dataloader:
+                bp_imgs, inhand_imgs, obs, action, mask = data
+
+                bp_imgs = bp_imgs.to(self.device)
+                inhand_imgs = inhand_imgs.to(self.device)
+
+                obs = self.scaler.scale_input(obs)
+                action = self.scaler.scale_output(action)
+
+                state = (bp_imgs, inhand_imgs, obs)
+
+                batch_loss, loss_dict = self.train_step(state, action)
+
+                train_loss_info["train/loss"] = batch_loss
+                for name, value in loss_dict.items():
+                    train_loss_info[f"train/{name}"] = value
+                train_loss_info["epoch"] = num_epoch
+                wandb.log(train_loss_info)
+
+        self.store_model_weights(self.working_dir, sv_name=self.last_model_name)
+        log.info("Training done!")
 
     def train_step(self, state: torch.Tensor, action: torch.Tensor, goal: Optional[torch.Tensor] = None):
         """
@@ -318,7 +367,9 @@ class BesoAgent(BaseAgent):
         # update the ema model
         if self.steps % self.update_ema_every_n_steps == 0:
             self.ema_helper.update(self.model.parameters())
-        return loss.item()
+
+        loss_dict = { "mse": loss.item() }
+        return loss.item(), loss_dict
 
     @torch.no_grad()
     def evaluate(self, state: torch.tensor, action: torch.tensor, goal: Optional[torch.Tensor] = None):
@@ -332,12 +383,12 @@ class BesoAgent(BaseAgent):
         Raises:
             None
         """
-        total_mse = 0
+        # total_mse = 0
         # # scale data if necessary, otherwise the scaler will return unchanged values
         # state, action, goal = self.process_batch(batch, predict=True)
 
-        state = self.scaler.scale_input(state)
-        action = self.scaler.scale_output(action)
+        # state = self.scaler.scale_input(state)
+        # action = self.scaler.scale_output(action)
 
         if goal is not None:
             goal = self.scaler.scale_input(goal)
@@ -360,7 +411,8 @@ class BesoAgent(BaseAgent):
         if self.use_ema:
             self.ema_helper.restore(self.model.parameters())
 
-        return loss.item()
+        loss_dict = { "mse": loss.item() }
+        return loss.item(), loss_dict
 
     # @torch.no_grad()
     # def evaluate(self, state: torch.tensor, action: torch.tensor, goal: Optional[torch.Tensor] = None):
