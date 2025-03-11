@@ -32,7 +32,8 @@ conda install mamba -c conda-forge -y -q
 echo Installing dependencies...
 
 mamba install -c conda-forge mkl==2024.0.0
-mamba install -c pytorch -c nvidia pytorch==1.13.1 torchvision==0.14.1 pytorch-cuda=11.7
+mamba install -c conda-forge "numpy<2.0"
+pip install torch==2.1.2 torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu121
 
 mamba install -c conda-forge pybullet pyyaml scipy opencv pinocchio matplotlib gin-config tyro gym==0.21.0 -y -q
 
@@ -52,6 +53,9 @@ pip install ipython
 
 # BESO
 pip install torchsde torchdiffeq
+
+# DinoV2
+pip install xformers==0.0.23.post1
 
 ############ MUJOCO BETA SUPPORT INSTALLATION ############
 mamba install -c conda-forge imageio -y -q
