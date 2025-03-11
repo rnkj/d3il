@@ -392,7 +392,7 @@ class Aligning_Img_Dataset_V2(TrajectoryDataset):
                 image = transform(image)
                 bp_images.append(image)
 
-            bp_images = torch.concatenate(bp_images, dim=0)
+            bp_images = torch.stack(bp_images, dim=0)
             ################################################################
             inhand_imgs = glob.glob(data_dir + '/images/inhand-cam/' + file_name + '/*')
             inhand_imgs.sort(key=lambda x: int(os.path.basename(x).split('.')[0]))
@@ -403,7 +403,7 @@ class Aligning_Img_Dataset_V2(TrajectoryDataset):
                 image = transform(image)
                 inhand_images.append(image)
 
-            inhand_images = torch.concatenate(inhand_images, dim=0)
+            inhand_images = torch.stack(inhand_images, dim=0)
             ##################################################################
 
             # push_box_pos = env_state['push-box']['pos']
