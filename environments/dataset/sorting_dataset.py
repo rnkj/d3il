@@ -485,7 +485,7 @@ class Sorting_Img_Dataset_V2(TrajectoryDataset):
 
         patch_h, patch_w = (16, 16)  # hardcode
         transform = T.Compose([
-            T.GaussianBlur(9, sigma=(0.1, 2.0)),
+            # T.GaussianBlur(9, sigma=(0.1, 2.0)),
             T.Resize((patch_h * 14, patch_w * 14)),
             T.CenterCrop((patch_h * 14, patch_w * 14)),
             T.ToImage(),
@@ -493,7 +493,7 @@ class Sorting_Img_Dataset_V2(TrajectoryDataset):
             T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         ])
 
-        for file in tqdm(state_files[:100]):
+        for file in tqdm(state_files[:10]):
             with open(os.path.join(data_dir, 'state', file), 'rb') as f:
                 env_state = pickle.load(f)
 
@@ -518,7 +518,7 @@ class Sorting_Img_Dataset_V2(TrajectoryDataset):
                 image = transform(image)
                 bp_images.append(image)
 
-            bp_images = torch.concatenate(bp_images, dim=0)
+            bp_images = torch.stack(bp_images, dim=0)
             ################################################################
             inhand_imgs = glob.glob(data_dir + '/images/inhand-cam/' + file_name + '/*')
             inhand_imgs.sort(key=lambda x: int(os.path.basename(x).split('.')[0]))
@@ -529,7 +529,7 @@ class Sorting_Img_Dataset_V2(TrajectoryDataset):
                 image = transform(image)
                 inhand_images.append(image)
 
-            inhand_images = torch.concatenate(inhand_images, dim=0)
+            inhand_images = torch.stack(inhand_images, dim=0)
             ##################################################################
             # input_state = np.concatenate((robot_des_pos, robot_c_pos), axis=-1)
 

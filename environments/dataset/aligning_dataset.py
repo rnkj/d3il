@@ -357,7 +357,7 @@ class Aligning_Img_Dataset_V2(TrajectoryDataset):
 
         patch_h, patch_w = (16, 16)  # hardcode
         transform = T.Compose([
-            T.GaussianBlur(9, sigma=(0.1, 2.0)),
+            # T.GaussianBlur(9, sigma=(0.1, 2.0)),
             T.Resize((patch_h * 14, patch_w * 14)),
             T.CenterCrop((patch_h * 14, patch_w * 14)),
             T.ToImage(),
