@@ -34,6 +34,8 @@ class MjRobot(RobotBase, MjIncludeTemplate):
         clip_actions=False,
         root=sim_path.D3IL_DIR,
         xml_path=None,
+        image_width=96,
+        image_height=96,
     ):
         RobotBase.__init__(self, scene, dt, num_DoF, base_position, base_orientation)
 
@@ -59,7 +61,13 @@ class MjRobot(RobotBase, MjIncludeTemplate):
         MjRobot.GLOBAL_MJ_ROBOT_COUNTER += 1
         self.root = root
 
-        self.inhand_cam = MjInhandCamera(self.add_id2model_key("rgbd"))
+        self.image_width = image_width
+        self.image_height = image_height
+        self.inhand_cam = MjInhandCamera(
+            self.add_id2model_key("rgbd"),
+            width=self.image_width,
+            height=self.image_height,
+        )
 
         # Position and velocity for freezing operations
         self.qpos_freeze = None

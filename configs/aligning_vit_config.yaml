@@ -93,3 +93,5 @@ simulation:
   n_contexts: 60
   n_trajectories_per_context: 8
   if_vision: True
+  image_width: 224
+  image_height: 224

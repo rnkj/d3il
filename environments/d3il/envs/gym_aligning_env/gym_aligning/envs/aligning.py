@@ -135,7 +135,9 @@ class Robot_Push_Env(GymEnvWrapper):
         random_env: bool = False,
         interactive: bool = False,
         render: bool = True,
-        if_vision: bool = False
+        if_vision: bool = False,
+        image_width: int = 96,
+        image_height: int = 96,
     ):
 
         sim_factory = MjFactory()
@@ -146,6 +148,8 @@ class Robot_Push_Env(GymEnvWrapper):
         robot = MjRobot(
             scene,
             xml_path=d3il_path("./models/mj/robot/panda_rod_invisible.xml"),
+            image_width=image_width,
+            image_height=image_height,
         )
         controller = robot.cartesianPosQuatTrackingController
 
@@ -171,7 +175,7 @@ class Robot_Push_Env(GymEnvWrapper):
         self.random_env = random_env
         self.manager = BlockContextManager(scene, index=1)
 
-        self.bp_cam = BPCageCam()
+        self.bp_cam = BPCageCam(width=image_width, height=image_height)
         self.inhand_cam = robot.inhand_cam
 
         self.push_box = obj_list[0]
