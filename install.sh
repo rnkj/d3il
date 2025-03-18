@@ -35,6 +35,7 @@ mamba install -c conda-forge mkl==2024.0.0
 mamba install -c conda-forge "numpy<2.0"
 pip install torch==2.1.2 torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu121
 
+mamba install -c conda-forge gcc -y -q
 mamba install -c conda-forge pybullet pyyaml scipy opencv pinocchio matplotlib gin-config tyro gym==0.21.0 -y -q
 
 # Open3D for PointClouds and its dependencies. Why does it not install them directly?
@@ -61,9 +62,25 @@ pip install xformers==0.0.23.post1
 mamba install -c conda-forge imageio -y -q
 pip install mujoco==2.3.2
 
-############ INSTALL D3il-Sim & FINALIZE ############
+############ INSTALL D3il-Sim ############
 echo
 echo Installing D3il-Sim Package
 cd environments/d3il && pip install -e .
+
+############ Update setting files ############
+mkdir -p $CONDA_PREFIX/etc/conda/activate.d/
+mkdir -p $CONDA_PREFIX/etc/conda/deactivate.d
+
+cat << EOS > $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
+#!/bin/sh
+export _OLD_LD_LIBRARY_PATH=\$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=\$CONDA_PREFIX/lib:\$LD_LIBRARY_PATH
+EOS
+
+cat << EOS > $CONDA_PREFIX/etc/conda/deactivate.d/env_vars.sh
+#!/bin/sh
+export LD_LIBRARY_PATH=\$_OLD_LD_LIBRARY_PATH
+unset _OLD_LD_LIBRARY_PATH
+EOS
 
 exit 0
