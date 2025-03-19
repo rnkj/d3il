@@ -230,12 +230,13 @@ class Stacking_Img_Dataset(TrajectoryDataset):
         masks = []
 
         # TODO: insert data_dir here
+        data_dir = sim_framework_path("environments/dataset/data/stacking/vision_data")
         state_files = np.load(sim_framework_path(data_directory), allow_pickle=True)
 
         bp_cam_imgs = []
         inhand_cam_imgs = []
 
-        for file in tqdm(state_files):
+        for file in tqdm(state_files[:3]):
             with open(os.path.join(data_dir, 'state', file), 'rb') as f:
                 env_state = pickle.load(f)
 
