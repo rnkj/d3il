@@ -94,3 +94,5 @@ simulation:
   max_steps_per_episode: 700
   if_vision: True
   num_box: ${num_boxes}
+  image_width: 224
+  image_height: 224
