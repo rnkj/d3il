@@ -8,15 +8,14 @@ import h5py
 from tqdm import tqdm
 
 
+dst_dirname = "environments/dataset/data/hdf5"
+if not os.path.isdir(dst_dirname):
+    os.makedirs(dst_dirname, exist_ok=True)
+
 task_name = "aligning"
-
-
-hdf = h5py.File(f"{task_name}.hdf5", "w")
-
+hdf = h5py.File(os.path.join(dst_dirname, f"{task_name}.hdf5"), "w")
 
 dataset_dir = f"environments/dataset/data/{task_name}"
-
-
 data_dir_files = sorted(glob(os.path.join(dataset_dir, "train_files*.pkl")))
 data_dir_files.append(os.path.join(dataset_dir, "eval_files.pkl"))
 print("Data files:")
