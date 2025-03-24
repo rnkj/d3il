@@ -534,12 +534,12 @@ class Aligning_Img_HDFDataset(TrajectoryDataset):
         self.hdf = h5py.File(sim_framework_path(data_directory), "r")
 
         data_files_dict = self.hdf["data_files"]
-        self.data_files = np.array(data_files_dict[data_file], dtype=str)
-        self.num_data = len(self.data_files)
+        self.episode_files = np.array(data_files_dict[data_file], dtype=str)
+        self.num_data = len(self.episode_files)
 
         self.episode_lengths = [0] * self.num_data
-        for i, data_file in enumerate(self.data_files):
-            episode = self._get_episode(data_file)
+        for i, episode_file in enumerate(self.episode_files):
+            episode = self._get_episode(episode_file)
             _ts = episode["state"]["robot"]["time_stamp"]
             self.episode_lengths[i] = len(_ts) - 1
         self.slices = self.get_slices()
@@ -548,8 +548,8 @@ class Aligning_Img_HDFDataset(TrajectoryDataset):
         logging.info("Closing HDF5 file")
         self.hdf.close()
 
-    def _get_episode(self, data_file: str):
-        key = data_file.replace(".pkl", "")
+    def _get_episode(self, episode_file: str):
+        key = episode_file.replace(".pkl", "")
         return self.hdf["data"][key]
     
     def _get_robot_des_pos(self, episode):
@@ -578,8 +578,8 @@ class Aligning_Img_HDFDataset(TrajectoryDataset):
     def get_all_actions(self):
         action_list = [None] * self.num_data
         for i in range(self.num_data):
-            data_file = self.data_files[i]
-            episode = self._get_episode(data_file)
+            episode_file = self.episode_files[i]
+            episode = self._get_episode(episode_file)
             robot_des_pos = self._get_robot_des_pos(episode)
             vel_state = robot_des_pos[1:] - robot_des_pos[:-1]
             action_list[i] = vel_state
@@ -589,8 +589,8 @@ class Aligning_Img_HDFDataset(TrajectoryDataset):
     def get_all_observations(self):
         obs_list = [None] * self.num_data
         for i in range(self.num_data):
-            data_file = self.data_files[i]
-            episode = self._get_episode(data_file)
+            episode_file = self.episode_files[i]
+            episode = self._get_episode(episode_file)
             robot_des_pos = self._get_robot_des_pos(episode)
             obs_list[i] = robot_des_pos[:-1]
         obs_arr = np.concatenate(obs_list, axis=0)
@@ -603,8 +603,8 @@ class Aligning_Img_HDFDataset(TrajectoryDataset):
 
         i, start, end = self.slices[idx]
 
-        data_file = self.data_files[i]
-        episode = self._get_episode(data_file)
+        episode_file = self.episode_files[i]
+        episode = self._get_episode(episode_file)
         robot_des_pos = self._get_robot_des_pos(episode)
         vel_state = robot_des_pos[1:] - robot_des_pos[:-1]
 
