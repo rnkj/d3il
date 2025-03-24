@@ -4,8 +4,9 @@ defaults:
 agent_name: bet_mlp_vision
 log_dir: logs/sorting/
 
-train_data_path: environments/dataset/data/sorting/4_boxes_train_files.pkl
-eval_data_path: environments/dataset/data/sorting/4_boxes_eval_files.pkl
+hdf_path: environments/dataset/data/hdf5/sorting_4_boxes.hdf5
+# train_data_path: environments/dataset/data/sorting/4_boxes_train_files.pkl
+# eval_data_path: environments/dataset/data/sorting/4_boxes_eval_files.pkl
 
 num_boxes: 4
 
@@ -51,23 +52,46 @@ max_len_data: 600
 window_size: 1
 
 # Dataset
+# trainset:
+#   _target_: environments.dataset.sorting_dataset.Sorting_Img_Dataset_V2
+#   data_directory: ${train_data_path}
+#   obs_dim: ${obs_dim}
+#   action_dim: ${action_dim}
+#   max_len_data: ${max_len_data}
+#   window_size: ${window_size}
+#   num_boxes: ${num_boxes}
 trainset:
-  _target_: environments.dataset.sorting_dataset.Sorting_Img_Dataset_V2
-  data_directory: ${train_data_path}
+  _target_: environments.dataset.sorting_dataset.Sorting_Img_HDFDataset
+  data_directory: ${hdf_path}
+  data_file: 4_boxes_train_files
+  dataset_scale: 0.25
   obs_dim: ${obs_dim}
   action_dim: ${action_dim}
   max_len_data: ${max_len_data}
   window_size: ${window_size}
-  num_boxes: ${num_boxes}
+  image_size: [ 224, 224 ]
+  image_preprocess: norm
 
+
+# valset:
+#   _target_: environments.dataset.sorting_dataset.Sorting_Img_Dataset_V2
+#   data_directory: ${eval_data_path}
+#   obs_dim: ${obs_dim}
+#   action_dim: ${action_dim}
+#   max_len_data: ${max_len_data}
+#   window_size: ${window_size}
+#   num_boxes: ${num_boxes}
 valset:
-  _target_: environments.dataset.sorting_dataset.Sorting_Img_Dataset_V2
-  data_directory: ${eval_data_path}
+  _target_: environments.dataset.sorting_dataset.Sorting_Img_HDFDataset
+  data_directory: ${hdf_path}
+  data_file: 4_boxes_eval_files
+  dataset_scale: 1.0
   obs_dim: ${obs_dim}
   action_dim: ${action_dim}
   max_len_data: ${max_len_data}
   window_size: ${window_size}
-  num_boxes: ${num_boxes}
+  image_size: [ 224, 224 ]
+  image_preprocess: norm
 
 # sim during training
 train_simulation:
