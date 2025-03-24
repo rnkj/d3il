@@ -1,11 +1,11 @@
-import random
-from typing import Optional, Callable, Any
+from typing import Tuple, List, Literal
 import logging
 
 import os
 import glob
 
 import cv2
+import h5py
 import torch
 import pickle
 import numpy as np
@@ -495,5 +495,151 @@ class Aligning_Img_Dataset_V2(TrajectoryDataset):
 
         bp_imgs = self.bp_cam_imgs[i][start:end]
         inhand_imgs = self.inhand_cam_imgs[i][start:end]
+
+        return bp_imgs, inhand_imgs, obs, act, mask
+    
+
+class Aligning_Img_HDFDataset(TrajectoryDataset):
+    IMAGE_MEAN = np.array((0.485, 0.456, 0.406), dtype=np.float32)
+    IMAGE_STD = np.array((0.229, 0.224, 0.225), dtype=np.float32)
+
+    def __init__(
+        self,
+        data_directory: os.PathLike,
+        data_file: str,
+        device="cpu",
+        obs_dim: int = 20,
+        action_dim: int = 2,
+        max_len_data: int = 256,
+        window_size: int = 1,
+        image_size: Tuple[int, int] = (96, 96),
+        image_preprocess: Literal["std", "norm"] = "norm",
+    ):
+        super().__init__(
+            data_directory=data_directory,
+            device=device,
+            obs_dim=obs_dim,
+            action_dim=action_dim,
+            max_len_data=max_len_data,
+            window_size=window_size
+        )
+        self.data_file = data_file
+        self.image_size = tuple(image_size)
+
+        self.image_preprocess = image_preprocess
+        assert self.image_preprocess in ("std", "norm")
+
+        logging.info("Loading Robot Push Dataset")
+
+        self.hdf = h5py.File(sim_framework_path(data_directory), "r")
+
+        data_files_dict = self.hdf["data_files"]
+        self.data_files = np.array(data_files_dict[data_file], dtype=str)
+        self.num_data = len(self.data_files)
+
+        self.episode_lengths = [0] * self.num_data
+        for i, data_file in enumerate(self.data_files):
+            episode = self._get_episode(data_file)
+            _ts = episode["state"]["robot"]["time_stamp"]
+            self.episode_lengths[i] = len(_ts) - 1
+        self.slices = self.get_slices()
+
+    def __del__(self):
+        logging.info("Closing HDF5 file")
+        self.hdf.close()
+
+    def _get_episode(self, data_file: str):
+        key = data_file.replace(".pkl", "")
+        return self.hdf["data"][key]
+    
+    def _get_robot_des_pos(self, episode):
+        return np.array(episode["state"]["robot"]["des_c_pos"], dtype=np.float32)
+
+    def get_slices(self) -> List[Tuple[int, int, int]]:
+        slices = []
+
+        min_seq_length = np.inf
+        for i in range(self.num_data):
+            T = self.get_seq_length(i)
+            min_seq_length = min(T, min_seq_length)
+
+            if T - self.window_size < 0:
+                print(f"Ignored short sequence #{i}: len={T}, window={self.window_size}")
+            else:
+                slices += [
+                    (i, start, start + self.window_size) for start in range(T - self.window_size + 1)
+                ]  # slice indices follow convention [start, end)
+
+        return slices
+    
+    def get_seq_length(self, idx: int) -> int:
+        return self.episode_lengths[idx]
+    
+    def get_all_actions(self):
+        action_list = [None] * self.num_data
+        for i in range(self.num_data):
+            data_file = self.data_files[i]
+            episode = self._get_episode(data_file)
+            robot_des_pos = self._get_robot_des_pos(episode)
+            vel_state = robot_des_pos[1:] - robot_des_pos[:-1]
+            action_list[i] = vel_state
+        act_arr = np.concatenate(action_list, axis=0)
+        return torch.from_numpy(act_arr)
+
+    def get_all_observations(self):
+        obs_list = [None] * self.num_data
+        for i in range(self.num_data):
+            data_file = self.data_files[i]
+            episode = self._get_episode(data_file)
+            robot_des_pos = self._get_robot_des_pos(episode)
+            obs_list[i] = robot_des_pos[:-1]
+        obs_arr = np.concatenate(obs_list, axis=0)
+        return torch.from_numpy(obs_arr)
+
+    def __len__(self):
+        return len(self.slices)
+    
+    def __getitem__(self, idx: int):
+
+        i, start, end = self.slices[idx]
+
+        data_file = self.data_files[i]
+        episode = self._get_episode(data_file)
+        robot_des_pos = self._get_robot_des_pos(episode)
+        vel_state = robot_des_pos[1:] - robot_des_pos[:-1]
+
+        obs = torch.from_numpy(robot_des_pos[start:end])
+        act = torch.from_numpy(vel_state[start:end])
+        mask = torch.from_numpy(np.ones(self.window_size, dtype=bool))
+
+
+        _bp_imgs = episode["images"]["bp-cam"][start:end]
+        _inhand_imgs = episode["images"]["inhand-cam"][start:end]
+
+        bp_imgs_arr = np.zeros(
+            (self.window_size, *self.image_size, 3), dtype=np.uint8
+        )
+        inhand_imgs_arr = np.zeros(
+            (self.window_size, *self.image_size, 3), dtype=np.uint8
+        )
+
+        for img_i in range(self.window_size):
+            bp = _bp_imgs[img_i]
+            inhand = _inhand_imgs[img_i]
+            if self.image_size != (96, 96):
+                bp = cv2.resize(bp, self.image_size)
+                inhand = cv2.resize(inhand, self.image_size)
+            bp_imgs_arr[img_i] = bp
+            inhand_imgs_arr[img_i] = inhand
+
+        # preprocess common in both standardization and normalization
+        bp_imgs_arr = (bp_imgs_arr / 255.0).astype(np.float32)
+        inhand_imgs_arr = (inhand_imgs_arr / 255.0).astype(np.float32)
+        if self.image_preprocess == "std":
+            bp_imgs_arr = (bp_imgs_arr - self.IMAGE_MEAN) / self.IMAGE_STD 
+            inhand_imgs_arr = (inhand_imgs_arr - self.IMAGE_MEAN) / self.IMAGE_STD 
+
+        bp_imgs = torch.from_numpy(bp_imgs_arr.transpose(0, 3, 1, 2))
+        inhand_imgs = torch.from_numpy(inhand_imgs_arr.transpose(0, 3, 1, 2))
 
         return bp_imgs, inhand_imgs, obs, act, mask

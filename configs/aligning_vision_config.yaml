@@ -5,13 +5,14 @@ defaults:
 agent_name: ddpm_encdec_vision
 log_dir: logs/aligning/
 
-train_data_path: environments/dataset/data/aligning/train_files.pkl
-eval_data_path: environments/dataset/data/aligning/eval_files.pkl
+hdf_path: environments/dataset/data/hdf5/aligning.hdf5
+# train_data_path: environments/dataset/data/aligning/train_files.pkl
+# eval_data_path: environments/dataset/data/aligning/eval_files.pkl
 
 # insert wandb here
 wandb:
-  entity: ???
-  project: ???
+  entity: YourEntity
+  project: YourProject
   mode: disabled
 
 group: aligning_${agent_name}
@@ -56,21 +57,41 @@ max_len_data: 512
 window_size: 8
 
 # Dataset
+# trainset:
+#   _target_: environments.dataset.aligning_dataset.Aligning_Img_Dataset
+#   data_directory: ${train_data_path}
+#   obs_dim: ${obs_dim}
+#   action_dim: ${action_dim}
+#   max_len_data: ${max_len_data}
+#   window_size: ${window_size}
 trainset:
-  _target_: environments.dataset.aligning_dataset.Aligning_Img_Dataset
-  data_directory: ${train_data_path}
+  _target_: environments.dataset.aligning_dataset.Aligning_Img_HDFDataset
+  data_directory: ${hdf_path}
+  data_file: train_files_0.1_
   obs_dim: ${obs_dim}
   action_dim: ${action_dim}
   max_len_data: ${max_len_data}
   window_size: ${window_size}
+  image_size: [ 96, 96 ]
+  image_preprocess: norm
 
+# valset:
+#   _target_: environments.dataset.aligning_dataset.Aligning_Img_Dataset
+#   data_directory: ${eval_data_path}
+#   obs_dim: ${obs_dim}
+#   action_dim: ${action_dim}
+#   max_len_data: ${max_len_data}
+#   window_size: ${window_size}
 valset:
-  _target_: environments.dataset.aligning_dataset.Aligning_Img_Dataset
-  data_directory: ${eval_data_path}
+  _target_: environments.dataset.aligning_dataset.Aligning_Img_HDFDataset
+  data_directory: ${hdf_path}
+  data_file: eval_files
   obs_dim: ${obs_dim}
   action_dim: ${action_dim}
   max_len_data: ${max_len_data}
   window_size: ${window_size}
+  image_size: [ 96, 96 ]
+  image_preprocess: norm
 
 # sim during training
 train_simulation:
