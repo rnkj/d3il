@@ -36,7 +36,7 @@ mamba install -c conda-forge "numpy<2.0"
 pip install torch==2.1.2 torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu121
 
 mamba install -c conda-forge gcc -y -q
-mamba install -c conda-forge pybullet pyyaml scipy opencv pinocchio matplotlib gin-config tyro gym==0.21.0 -y -q
+mamba install -c conda-forge pybullet pyyaml scipy opencv pinocchio matplotlib gin-config tyro h5py gym==0.21.0 -y -q
 
 # Open3D for PointClouds and its dependencies. Why does it not install them directly?
 mamba install -c conda-forge scikit-learn addict pandas plyfile tqdm -y -q
