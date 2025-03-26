@@ -246,31 +246,72 @@ class IBCAgent(BaseAgent):
         epoch_loss = 0
         mse_neg_loss = 0
 
-        # epoch training
-        for data in self.train_dataloader:
-            bp_imgs, inhand_imgs, obs, action, mask = data
+        best_test_loss = 1e10
 
-            bp_imgs = bp_imgs.to(self.device)
-            inhand_imgs = inhand_imgs.to(self.device)
+        for num_epoch in tqdm(range(self.epoch)):
 
-            obs = self.scaler.scale_input(obs)
-            action = self.scaler.scale_output(action)
+            if not (num_epoch + 1) % self.eval_every_n_epochs:
 
-            state = (bp_imgs, inhand_imgs, obs)
+                test_loss_list = []
+                for data in self.train_dataloader:
+                    bp_imgs, inhand_imgs, obs, action, mask = data
 
-            state_embedding = self.model.get_embedding(state)
+                    bp_imgs = bp_imgs.to(self.device)
+                    inhand_imgs = inhand_imgs.to(self.device)
 
-            batch_loss, loss_info = self.train_step(state_embedding, action)  # TODO get mean of loss/grad info
-            batch_loss = batch_loss.detach().cpu().numpy()
+                    obs = self.scaler.scale_input(obs)
+                    action = self.scaler.scale_output(action)
 
-            wandb.log({"train_loss": batch_loss})
-            wandb.log({"mse_neg_loss": loss_info['mse_neg_true_examples']})
+                    state = (bp_imgs, inhand_imgs, obs)
 
-            epoch_loss += batch_loss
-            mse_neg_loss += loss_info['mse_neg_true_examples']
-            self.next_step = False
+                    state_embedding = self.model.get_embedding(state)
+                    batch_loss = self.evaluate(state_embedding, action)
+                    batch_loss = batch_loss.detach().cpu().numpy()
+                    test_loss_list.append(batch_loss)
 
-        self.steps += 1
+                length = len(self.test_dataloader)
+                test_loss_info = {
+                    "epoch": num_epoch,
+                    "test/loss": sum(test_loss_list) / length,
+                }
+                wandb.log(test_loss_info)
+
+                if test_loss_info["test/loss"] < best_test_loss:
+                    best_test_loss = test_loss_info["test/loss"]
+                    self.store_model_weights(
+                        self.working_dir, sv_name=self.eval_model_name
+                    )
+
+                    wandb.log({"best_model_epochs": num_epoch})
+                    log.info('New best test loss. Stored weights have been updated!')
+
+            # epoch training
+            for data in self.train_dataloader:
+                bp_imgs, inhand_imgs, obs, action, mask = data
+
+                bp_imgs = bp_imgs.to(self.device)
+                inhand_imgs = inhand_imgs.to(self.device)
+
+                obs = self.scaler.scale_input(obs)
+                action = self.scaler.scale_output(action)
+
+                state = (bp_imgs, inhand_imgs, obs)
+
+                state_embedding = self.model.get_embedding(state)
+
+                batch_loss, loss_info = self.train_step(state_embedding, action)  # TODO get mean of loss/grad info
+                batch_loss = batch_loss.detach().cpu().numpy()
+
+                wandb.log({"train_loss": batch_loss})
+                wandb.log({"mse_neg_loss": loss_info['mse_neg_true_examples']})
+
+                epoch_loss += batch_loss
+                mse_neg_loss += loss_info['mse_neg_true_examples']
+                self.next_step = False
+
+        # self.steps += 1
+        self.store_model_weights(self.working_dir, sv_name=self.last_model_name)
+        log.info("Training done!")
 
     def train_step(self, state: torch.Tensor, action: torch.Tensor, goal: Optional[torch.Tensor] = None):
         # move state to the chosen devices
