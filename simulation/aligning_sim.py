@@ -11,6 +11,7 @@ import wandb
 
 from simulation.base_sim import BaseSim
 from agents.utils.sim_path import sim_framework_path
+import imageio as iio
 
 
 log = logging.getLogger(__name__)
@@ -111,12 +112,21 @@ class Aligning_Sim(BaseSim):
                         inhand_image = inhand_image.transpose((2, 0, 1)) / 255.
 
                 else:
+                    filename = "img_output"
+                    if not os.path.exists(filename): 
+                        os.makedirs(filename, exist_ok=True)
+                    fps = 30
 
                     pred_action = env.robot_state()
                     done = False
+                    image_list = []
                     while not done:
 
                         obs = np.concatenate((pred_action[:3], obs))
+                        img = env.bp_cam.get_image(depth=False)
+                        image_list.append(img)
+                        
+
 
                         pred_action = agent.predict(obs)
                         pred_action = pred_action[0] + obs[:3]
@@ -124,6 +134,15 @@ class Aligning_Sim(BaseSim):
                         pred_action = np.concatenate((pred_action, [0, 1, 0, 0]), axis=0)
 
                         obs, reward, done, info = env.step(pred_action)
+                    
+                    
+                    with iio.get_writer("{}_{}.mp4".format(context, i), fps=fps) as writer:
+                        for fname in image_list:
+                            writer.append_data(fname)
+                        
+                
+
+
 
                 mode_encoding[context, i] = torch.tensor(info['mode'])
                 successes[context, i] = torch.tensor(info['success'])
