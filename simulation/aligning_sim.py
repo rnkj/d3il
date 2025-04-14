@@ -136,7 +136,7 @@ class Aligning_Sim(BaseSim):
                         obs, reward, done, info = env.step(pred_action)
                     
                     
-                    with iio.get_writer("{}_{}.mp4".format(context, i), fps=fps) as writer:
+                    with iio.get_writer("{}/{}_{}.mp4".format(filename, context, i), fps=fps) as writer:
                         for fname in image_list:
                             writer.append_data(fname)
                         
