@@ -11,7 +11,7 @@ import wandb
 
 from simulation.base_sim import BaseSim
 from agents.utils.sim_path import sim_framework_path
-import imageio as iio
+import imageio.v3 as iio
 
 
 log = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ class Aligning_Sim(BaseSim):
         self.image_width = image_width
         self.image_height = image_height
 
-    def eval_agent(self, agent, contexts, n_trajectories, mode_encoding, successes, mean_distance, pid, cpu_set):
+    def eval_agent(self, agent, contexts, n_trajectories, mode_encoding, successes, mean_distance, pid, cpu_set, save_movie = False):
 
         print(os.getpid(), cpu_set)
         assign_process_to_cpu(os.getpid(), cpu_set)
@@ -61,6 +61,12 @@ class Aligning_Sim(BaseSim):
             image_height=self.image_height,
         )
         env.start()
+
+        dirname = "img_output"
+        if save_movie:
+            os.makedirs(dirname, exist_ok=True)
+        
+        fps = env.n_substeps
 
         random.seed(pid)
         torch.manual_seed(pid)
@@ -112,10 +118,6 @@ class Aligning_Sim(BaseSim):
                         inhand_image = inhand_image.transpose((2, 0, 1)) / 255.
 
                 else:
-                    filename = "img_output"
-                    if not os.path.exists(filename): 
-                        os.makedirs(filename, exist_ok=True)
-                    fps = 30
 
                     pred_action = env.robot_state()
                     done = False
@@ -126,8 +128,6 @@ class Aligning_Sim(BaseSim):
                         img = env.bp_cam.get_image(depth=False)
                         image_list.append(img)
                         
-
-
                         pred_action = agent.predict(obs)
                         pred_action = pred_action[0] + obs[:3]
 
@@ -136,9 +136,8 @@ class Aligning_Sim(BaseSim):
                         obs, reward, done, info = env.step(pred_action)
                     
                     
-                    with iio.get_writer("{}/{}_{}.mp4".format(filename, context, i), fps=fps) as writer:
-                        for fname in image_list:
-                            writer.append_data(fname)
+                    video_path = os.path.join(dirname, f"context{context}_trajectory{i}.mp4")
+                    iio.imwrite(video_path, image_list, fps=fps)
                         
                 
 
