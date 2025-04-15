@@ -10,7 +10,7 @@ from .utils import (
     opt_rnn_state_t,
     opt_rnn_state_tuple_t,
 )
-from .torch_modules import MinRNNBase, MinGRU, MinLSTM, InitialStateWrapper
+from .torch_modules import MinRNNBase, MinGRUCell, MinLSTMCell, InitialStateWrapper
 from agents.models.common.utils import return_activiation_fcn
 
 
@@ -34,9 +34,9 @@ def load_rnn_cell(
     elif rnn_type == "lstm":
         cell = nn.LSTMCell(input_dim, hidden_dim, bias=bias)
     elif rnn_type == "mingru":
-        cell = MinGRU(input_dim, hidden_dim, bias=bias)
+        cell = MinGRUCell(input_dim, hidden_dim, bias=bias)
     elif rnn_type == "minlstm":
-        cell = MinLSTM(input_dim, hidden_dim, bias=bias)
+        cell = MinLSTMCell(input_dim, hidden_dim, bias=bias)
     else:
         ValueError("Module is not implemented! Please check spelling.")
     return cell
