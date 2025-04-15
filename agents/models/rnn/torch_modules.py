@@ -88,7 +88,7 @@ class MinRNNBase(nn.Module):
             return self.sequential_forward(input, hx)
 
 
-class MinGRU(MinRNNBase):
+class MinGRUCell(MinRNNBase):
     __constants__ = ["input_size", "hidden_size", "bias"]
 
     input_size: int
@@ -176,7 +176,7 @@ class MinGRU(MinRNNBase):
         return h_t
 
 
-class MinLSTM(MinRNNBase):
+class MinLSTMCell(MinRNNBase):
     __constants__ = ["input_size", "hidden_size", "bias"]
 
     input_size: int
