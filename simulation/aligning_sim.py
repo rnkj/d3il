@@ -11,6 +11,7 @@ import wandb
 
 from simulation.base_sim import BaseSim
 from agents.utils.sim_path import sim_framework_path
+import imageio.v3 as iio
 
 
 log = logging.getLogger(__name__)
@@ -48,10 +49,12 @@ class Aligning_Sim(BaseSim):
         self.image_width = image_width
         self.image_height = image_height
 
-    def eval_agent(self, agent, contexts, n_trajectories, mode_encoding, successes, mean_distance, pid, cpu_set):
+    def eval_agent(self, agent, contexts, n_trajectories, mode_encoding, successes, mean_distance, pid, cpu_set, save_movie=False):
 
         print(os.getpid(), cpu_set)
         assign_process_to_cpu(os.getpid(), cpu_set)
+
+        print(save_movie)
 
         env = Robot_Push_Env(
             render=self.render,
@@ -60,6 +63,12 @@ class Aligning_Sim(BaseSim):
             image_height=self.image_height,
         )
         env.start()
+
+        dirname = "img_output"
+        if save_movie:
+            os.makedirs(dirname, exist_ok=True)
+        
+        fps = env.n_substeps
 
         random.seed(pid)
         torch.manual_seed(pid)
@@ -114,16 +123,27 @@ class Aligning_Sim(BaseSim):
 
                     pred_action = env.robot_state()
                     done = False
+                    image_list = []
                     while not done:
 
                         obs = np.concatenate((pred_action[:3], obs))
-
+                        img = env.bp_cam.get_image(depth=False)
+                        image_list.append(img)
+                        
                         pred_action = agent.predict(obs)
                         pred_action = pred_action[0] + obs[:3]
 
                         pred_action = np.concatenate((pred_action, [0, 1, 0, 0]), axis=0)
 
                         obs, reward, done, info = env.step(pred_action)
+                    
+                    if save_movie:
+                        video_path = os.path.join(dirname, f"context{context}_trajectory{i}.mp4")
+                        iio.imwrite(video_path, image_list, fps=fps)
+                            
+                
+
+
 
                 mode_encoding[context, i] = torch.tensor(info['mode'])
                 successes[context, i] = torch.tensor(info['success'])
@@ -172,6 +192,7 @@ class Aligning_Sim(BaseSim):
                         "mean_distance": mean_distance,
                         "pid": i,
                         "cpu_set": set(cpu_set[i:i + 1]),
+                        "save_movie": True,
                     },
                 )
                 print("Start {}".format(i))
@@ -180,7 +201,7 @@ class Aligning_Sim(BaseSim):
             [p.join() for p in p_list]
 
         else:
-            self.eval_agent(agent, contexts, self.n_trajectories_per_context, mode_encoding, successes, mean_distance, 0, cpu_set=set([0]))
+            self.eval_agent(agent, contexts, self.n_trajectories_per_context, mode_encoding, successes, mean_distance, 0, cpu_set=set([0]), save_movie=True)
 
         n_modes = 2
 
