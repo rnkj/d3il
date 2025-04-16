@@ -49,10 +49,12 @@ class Aligning_Sim(BaseSim):
         self.image_width = image_width
         self.image_height = image_height
 
-    def eval_agent(self, agent, contexts, n_trajectories, mode_encoding, successes, mean_distance, pid, cpu_set, save_movie = False):
+    def eval_agent(self, agent, contexts, n_trajectories, mode_encoding, successes, mean_distance, pid, cpu_set, save_movie=False):
 
         print(os.getpid(), cpu_set)
         assign_process_to_cpu(os.getpid(), cpu_set)
+
+        print(save_movie)
 
         env = Robot_Push_Env(
             render=self.render,
@@ -135,10 +137,10 @@ class Aligning_Sim(BaseSim):
 
                         obs, reward, done, info = env.step(pred_action)
                     
-                    
-                    video_path = os.path.join(dirname, f"context{context}_trajectory{i}.mp4")
-                    iio.imwrite(video_path, image_list, fps=fps)
-                        
+                    if save_movie:
+                        video_path = os.path.join(dirname, f"context{context}_trajectory{i}.mp4")
+                        iio.imwrite(video_path, image_list, fps=fps)
+                            
                 
 
 
@@ -190,6 +192,7 @@ class Aligning_Sim(BaseSim):
                         "mean_distance": mean_distance,
                         "pid": i,
                         "cpu_set": set(cpu_set[i:i + 1]),
+                        "save_movie": True,
                     },
                 )
                 print("Start {}".format(i))
@@ -198,7 +201,7 @@ class Aligning_Sim(BaseSim):
             [p.join() for p in p_list]
 
         else:
-            self.eval_agent(agent, contexts, self.n_trajectories_per_context, mode_encoding, successes, mean_distance, 0, cpu_set=set([0]))
+            self.eval_agent(agent, contexts, self.n_trajectories_per_context, mode_encoding, successes, mean_distance, 0, cpu_set=set([0]), save_movie=True)
 
         n_modes = 2
 
